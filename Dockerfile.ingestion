@@ -1,0 +1,43 @@
+# ============================================================
+# kgrag-ingestion — V2 pipeline worker image
+# Inherits: kgrag-base:latest
+#
+# Serves ALL v2 pipeline microservices via command override:
+#   entity_extraction_service, summarization_service,
+#   embedding_service, qdrant_storage_service, neo4j_storage_service,
+#   code_preprocessor, document_preprocessor
+#
+# Build with:
+#   docker build -f Dockerfile.ingestion -t kgrag-ingestion:latest .
+#
+# Requires kgrag-base:latest to be built first.
+# ============================================================
+
+FROM kgrag-base:latest
+
+LABEL description="kgrag ingestion worker image — all v2 pipeline services"
+
+# ── Install ingestion-specific extras ────────────────────────
+COPY requirements-ingestion.txt .
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver \
+        -r requirements-ingestion.txt
+
+# ── Copy v2 pipeline service source ──────────────────────────
+# All services are included in a single image; CMD is overridden per
+# service in docker-compose. This avoids 7 separate pip install steps.
+COPY graph_services/entity_extraction_service/ /app/entity_extraction_service/
+COPY graph_services/summarization_service/ /app/summarization_service/
+COPY graph_services/embedding_service/ /app/embedding_service/
+COPY graph_services/qdrant_storage_service/ /app/qdrant_storage_service/
+COPY graph_services/neo4j_storage_service/ /app/neo4j_storage_service/
+
+# ── Preprocessors ────────────────────────────────────────────
+COPY graph_services/code_preprocessor/ /app/code_preprocessor/
+COPY graph_services/document_preprocessor/ /app/document_preprocessor/
+
+# ── Graph services shared utilities ──────────────────────────
+COPY graph_services/ontologies/ /app/graph_services/ontologies/
+COPY graph_services/protos/ /app/graph_services/protos/
+
+# ── Default CMD (overridden per service in docker-compose) ───
+CMD ["python", "-m", "entity_extraction_service.main"]

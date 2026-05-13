@@ -1,0 +1,36 @@
+# V2 Pipeline Services — Python dependencies
+# Shared by: entity_extraction_service, summarization_service,
+#            embedding_service, qdrant_storage_service, neo4j_storage_service
+
+# Cognee core with Neo4j graph + PostgreSQL relational extras.
+# Pinned to 0.5.5 — see requirements-cognee.txt for the full justification.
+# Must match the version kgrag-cognee uses; v2-pipeline workers share the same
+# patches via cognee_service.cognee_patches and break in lockstep on a mismatch.
+cognee[neo4j,postgres-binary]==0.5.5
+
+# Pin mistralai <2 — instructor 1.x expects mistralai.Mistral which was removed in v2
+mistralai>=1.0,<2
+
+# Qdrant client (community adapter installed separately in Dockerfile with --no-deps)
+qdrant-client
+
+# Kafka consumer/producer
+aiokafka
+
+# Async Postgres
+asyncpg
+
+# Logging
+structlog
+
+# Data models
+pydantic
+
+# Neo4j async driver (neo4j_storage_service + multi_tenancy)
+neo4j
+
+# Google Cloud Vertex AI (embedding_service via cognee LiteLLM engine)
+google-cloud-aiplatform
+
+# Environment
+python-dotenv

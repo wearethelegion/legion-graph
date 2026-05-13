@@ -1,0 +1,603 @@
+syntax = "proto3";
+
+// Brain CRUD is company-scoped only at the brain layer.
+
+package kgrag.brain;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+
+enum BrainContentKind {
+  BRAIN_CONTENT_KIND_UNSPECIFIED = 0;
+  BRAIN_CONTENT_KIND_EXPERTISE = 1;
+  BRAIN_CONTENT_KIND_KNOWLEDGE = 2;
+  BRAIN_CONTENT_KIND_LESSON = 3;
+}
+
+// Brain v2 CRUD Service
+// Postgres-first storage for KGRAG knowledge entities with Kafka async enrichment.
+// Co-hosted with CogneeService on the same gRPC server.
+service BrainService {
+
+  // ── Knowledge ───────────────────────────────────────────────────────────────
+  rpc CreateKnowledge(CreateKnowledgeRequest) returns (KnowledgeResponse);
+  rpc GetKnowledge(GetByIdRequest) returns (KnowledgeResponse);
+  rpc ListKnowledge(ListKnowledgeRequest) returns (ListKnowledgeResponse);
+  rpc UpdateKnowledge(UpdateKnowledgeRequest) returns (KnowledgeResponse);
+  rpc DeleteKnowledge(DeleteByIdRequest) returns (DeleteResponse);
+
+  // ── Expertise ──────────────────────────────────────────────────────────────
+  rpc CreateExpertise(CreateExpertiseRequest) returns (ExpertiseResponse);
+  rpc GetExpertise(GetByIdRequest) returns (ExpertiseResponse);
+  rpc ListExpertise(ListExpertiseRequest) returns (ListExpertiseResponse);
+  rpc UpdateExpertise(UpdateExpertiseRequest) returns (ExpertiseResponse);
+  rpc DeleteExpertise(DeleteByIdRequest) returns (DeleteResponse);
+  rpc AddExpertiseChunk(AddExpertiseChunkRequest) returns (ExpertiseChunkResponse);
+  rpc LinkExpertiseToAgent(LinkRequest) returns (LinkResponse);
+  rpc UnlinkExpertiseFromAgent(LinkRequest) returns (LinkResponse);
+
+  // ── Lessons ────────────────────────────────────────────────────────────────
+  rpc RecordLesson(RecordLessonRequest) returns (LessonResponse);
+  rpc GetLesson(GetByIdRequest) returns (LessonResponse);
+  rpc ListLessons(ListLessonsRequest) returns (ListLessonsResponse);
+  rpc UpdateLesson(UpdateLessonRequest) returns (LessonResponse);
+  rpc DeleteLesson(DeleteByIdRequest) returns (DeleteResponse);
+
+  // ── Engagements ────────────────────────────────────────────────────────────
+  rpc CreateEngagement(CreateEngagementRequest) returns (EngagementResponse);
+  rpc GetEngagement(GetByIdRequest) returns (EngagementResponse);
+  rpc ListEngagements(ListEngagementsRequest) returns (ListEngagementsResponse);
+  rpc UpdateEngagement(UpdateEngagementRequest) returns (EngagementResponse);
+  rpc DeleteEngagement(GetByIdRequest) returns (google.protobuf.Empty);
+
+  // ── Entries ────────────────────────────────────────────────────────────────
+  rpc AddEntry(AddEntryRequest) returns (EntryResponse);
+  rpc GetEntry(GetByIdRequest) returns (EntryResponse);
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+  rpc UpdateEntry(UpdateEntryRequest) returns (EntryResponse);
+  rpc DeleteEntry(GetByIdRequest) returns (google.protobuf.Empty);
+  rpc SearchEntries(SearchEntriesRequest) returns (ListEntriesResponse);
+  rpc ResumeEngagement(GetByIdRequest) returns (ResumeEngagementResponse);
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+  rpc UnifiedSearch(UnifiedSearchRequest) returns (UnifiedSearchResponse);
+}
+
+service BrainContentService {
+  rpc AddToBrain(AddToBrainRequest) returns (BrainContentResponse);
+  rpc UpdateBrain(UpdateBrainRequest) returns (BrainContentResponse);
+  rpc DeleteFromBrain(DeleteFromBrainRequest) returns (DeleteResponse);
+  rpc GetBrainContent(GetBrainContentRequest) returns (BrainContentResponse);
+  rpc ListBrainContent(ListBrainContentRequest) returns (ListBrainContentResponse);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shared Messages
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message GetByIdRequest {
+  string id = 1;
+}
+
+message DeleteByIdRequest {
+  string id = 1;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  string deleted_id = 4;
+}
+
+message LinkRequest {
+  string agent_id = 1;
+  string expertise_id = 2;
+  string company_id = 3;
+  string linked_by = 4;  // user_id who initiated the link
+}
+
+message LinkResponse {
+  bool success = 1;
+  string message = 2;
+  string link_id = 3;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Brain Content CRUD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message AddToBrainRequest {
+  BrainContentKind kind = 1;
+  string title = 2;
+  string content = 3;
+  map<string, string> metadata = 4;
+  reserved 5;
+
+  // EXPERTISE-only. Free text describing when the expertise should be applied.
+  // Ignored on KNOWLEDGE / LESSON.
+  string when_to_use = 6;
+
+  // LESSON-only structured fields. All optional. Ignored on other kinds.
+  string symptom = 7;
+  string root_cause = 8;
+  string solution = 9;
+  string prevention = 10;
+  // One of: "low", "medium", "high", "critical", or empty.
+  string severity = 11;
+}
+
+message UpdateBrainRequest {
+  string id = 1;
+  BrainContentKind kind = 2;
+  string title = 3;
+  string content = 4;
+  map<string, string> metadata = 5;
+  reserved 6;
+
+  // EXPERTISE-only. Empty string means "do not change".
+  string when_to_use = 7;
+
+  // LESSON-only structured fields. Empty string means "do not change".
+  string symptom = 8;
+  string root_cause = 9;
+  string solution = 10;
+  string prevention = 11;
+  string severity = 12;
+}
+
+message DeleteFromBrainRequest {
+  string id = 1;
+  BrainContentKind kind = 2;
+}
+
+message GetBrainContentRequest {
+  string id = 1;
+  BrainContentKind kind = 2;
+}
+
+message ListBrainContentRequest {
+  BrainContentKind kind = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  reserved 4;
+}
+
+message BrainContentResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  string id = 4;
+  BrainContentKind kind = 5;
+  string title = 6;
+  string content_preview = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  map<string, string> metadata = 10;
+  // Full content body. Populated on every response (Create / Get / Update /
+  // Delete + each item in List). Brain content is bounded and paginated, so
+  // List payloads stay manageable.
+  string content = 11;
+
+  // EXPERTISE-only. Empty string for KNOWLEDGE / LESSON.
+  string when_to_use = 12;
+
+  // LESSON-only structured fields. Empty string for KNOWLEDGE / EXPERTISE.
+  string symptom = 13;
+  string root_cause = 14;
+  string solution = 15;
+  string prevention = 16;
+  // "low" | "medium" | "high" | "critical" | "" (empty for non-LESSON).
+  string severity = 17;
+}
+
+message ListBrainContentResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  repeated BrainContentResponse items = 4;
+  int32 total = 5;
+  int32 page = 6;
+  int32 page_size = 7;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Knowledge
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message CreateKnowledgeRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string title = 3;
+  string text_content = 4;
+  string when_to_use = 5;
+  google.protobuf.Struct metadata = 6;
+  string created_by_user_id = 7;
+}
+
+message UpdateKnowledgeRequest {
+  string id = 1;
+  // Only non-empty fields are updated
+  string title = 2;
+  string text_content = 3;
+  string when_to_use = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+message ListKnowledgeRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;      // tsvector full-text search query
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message KnowledgeResponse {
+  string id = 1;
+  string company_id = 2;
+  string project_id = 3;
+  string title = 4;
+  string text_content = 5;
+  string when_to_use = 6;
+  string content_hash = 7;
+  google.protobuf.Struct metadata = 8;
+  string created_by_user_id = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  repeated KnowledgeChunk chunks = 12;  // populated on GetKnowledge
+}
+
+message KnowledgeChunk {
+  string id = 1;
+  string knowledge_id = 2;
+  string content = 3;
+  string summary = 4;
+  int32 position = 5;
+  int32 level = 6;
+  string parent_chunk_id = 7;
+  string chunk_type = 8;     // prose, code, heading, mixed
+  string section_title = 9;
+  bool has_code = 10;
+  repeated string keywords = 11;
+  google.protobuf.Timestamp created_at = 12;
+}
+
+message ListKnowledgeResponse {
+  repeated KnowledgeResponse items = 1;
+  int32 total_count = 2;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Expertise
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message CreateExpertiseRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string title = 3;
+  string content = 4;
+  string summary = 5;
+  string when_to_use = 6;
+  bool is_company_level = 7;
+  google.protobuf.Struct metadata = 8;
+  string created_by_user_id = 9;
+}
+
+message UpdateExpertiseRequest {
+  string id = 1;
+  // Only non-empty fields are updated
+  string title = 2;
+  string content = 3;
+  string summary = 4;
+  string when_to_use = 5;
+  bool is_company_level = 6;
+  google.protobuf.Struct metadata = 7;
+}
+
+message ListExpertiseRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;         // tsvector full-text search query
+  int32 limit = 4;
+  int32 offset = 5;
+  bool is_company_level = 6; // filter by company-level expertise
+  bool filter_company_level = 7;  // set true to actually apply is_company_level filter
+}
+
+message ExpertiseResponse {
+  string id = 1;
+  string company_id = 2;
+  string project_id = 3;
+  string title = 4;
+  string content = 5;
+  string summary = 6;
+  string when_to_use = 7;
+  bool is_company_level = 8;
+  string content_hash = 9;
+  google.protobuf.Struct metadata = 10;
+  string created_by_user_id = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  repeated ExpertiseChunk chunks = 14;  // populated on GetExpertise
+}
+
+message ExpertiseChunk {
+  string id = 1;
+  string expertise_id = 2;
+  string content = 3;
+  string summary = 4;
+  int32 position = 5;
+  int32 level = 6;
+  string parent_chunk_id = 7;
+  string chunk_path = 8;
+  string chunk_type = 9;     // prose, code, heading, mixed
+  string section_title = 10;
+  bool has_code = 11;
+  repeated string keywords = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message AddExpertiseChunkRequest {
+  string expertise_id = 1;
+  string content = 2;
+  string summary = 3;
+  string parent_chunk_id = 4;
+  string chunk_type = 5;     // prose, code, heading, mixed
+  string section_title = 6;
+}
+
+message ExpertiseChunkResponse {
+  ExpertiseChunk chunk = 1;
+}
+
+message ListExpertiseResponse {
+  repeated ExpertiseResponse items = 1;
+  int32 total_count = 2;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Lessons Learned
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message RecordLessonRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string title = 3;
+  string category = 4;         // e.g. "Infrastructure/Docker"
+  string symptom = 5;
+  string root_cause = 6;
+  string solution = 7;
+  string prevention = 8;
+  string severity = 9;         // low, medium, high, critical
+  repeated string tags = 10;
+  repeated string files_changed = 11;
+  string content = 12;         // optional extended description
+  google.protobuf.Struct metadata = 13;
+  string created_by_user_id = 14;
+}
+
+message UpdateLessonRequest {
+  string id = 1;
+  // Only non-empty fields are updated
+  string title = 2;
+  string category = 3;
+  string symptom = 4;
+  string root_cause = 5;
+  string solution = 6;
+  string prevention = 7;
+  string severity = 8;
+  repeated string tags = 9;
+  repeated string files_changed = 10;
+  string content = 11;
+  google.protobuf.Struct metadata = 12;
+}
+
+message ListLessonsRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;           // tsvector full-text search query
+  int32 limit = 4;
+  int32 offset = 5;
+  string category = 6;        // filter by category prefix
+  string severity = 7;        // filter by severity level
+}
+
+message LessonResponse {
+  string id = 1;
+  string company_id = 2;
+  string project_id = 3;
+  string title = 4;
+  string category = 5;
+  string symptom = 6;
+  string root_cause = 7;
+  string solution = 8;
+  string prevention = 9;
+  string severity = 10;
+  repeated string tags = 11;
+  repeated string files_changed = 12;
+  string content = 13;
+  string content_hash = 14;
+  google.protobuf.Struct metadata = 15;
+  string created_by_user_id = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp updated_at = 18;
+}
+
+message ListLessonsResponse {
+  repeated LessonResponse items = 1;
+  int32 total_count = 2;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Engagements
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message CreateEngagementRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string name = 3;
+  string ultimate_goal = 4;
+  string agent_id = 5;
+  string user_id = 6;
+  string summary = 7;
+  string session_id = 8;
+  string parent_engagement_id = 9;  // for hierarchical engagements (Epic → Feature)
+}
+
+message UpdateEngagementRequest {
+  string id = 1;
+  // Only non-empty fields are updated
+  string name = 2;
+  string status = 3;         // created, preparation, execution, validation, done
+  string summary = 4;
+  string ultimate_goal = 5;
+  string parent_engagement_id = 6;
+}
+
+message ListEngagementsRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+  string status = 6;                // filter by status
+  string parent_engagement_id = 7;  // filter by parent (list children)
+}
+
+message EngagementResponse {
+  string id = 1;
+  string company_id = 2;
+  string project_id = 3;
+  string name = 4;
+  string ultimate_goal = 5;
+  string agent_id = 6;
+  string user_id = 7;
+  string summary = 8;
+  string status = 9;
+  string session_id = 10;
+  string parent_engagement_id = 11;  // engagement_id column
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  int32 entry_count = 14;           // metadata: count of child entries
+}
+
+message ListEngagementsResponse {
+  repeated EngagementResponse items = 1;
+  int32 total_count = 2;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Entries
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message AddEntryRequest {
+  string engagement_id = 1;
+  string entry_type = 2;      // requirement, insight, decision, plan, note, question
+  string title = 3;
+  string content = 4;
+  string created_by_agent_id = 5;
+  repeated string references = 6;
+  repeated string tags = 7;
+  string summary = 8;
+  string session_id = 9;
+}
+
+message UpdateEntryRequest {
+  string id = 1;
+  // Only non-empty fields are updated
+  string content = 2;
+  repeated string references = 3;
+  repeated string tags = 4;
+  string summary = 5;
+  bool update_references = 6;  // set true to apply references (allows clearing)
+  bool update_tags = 7;        // set true to apply tags (allows clearing)
+}
+
+message ListEntriesRequest {
+  string engagement_id = 1;
+  string entry_type = 2;      // optional filter
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchEntriesRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;           // semantic search query
+  int32 limit = 4;
+  string entry_type = 5;      // optional filter
+  string engagement_id = 6;   // optional scope
+}
+
+message EntryResponse {
+  string id = 1;
+  string engagement_id = 2;
+  string entry_type = 3;
+  string title = 4;
+  string content = 5;
+  string created_by_agent_id = 6;
+  repeated string references = 7;
+  repeated string tags = 8;
+  string summary = 9;
+  string session_id = 10;
+  int32 version = 11;
+  string memory_level = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+message ListEntriesResponse {
+  repeated EntryResponse items = 1;
+  int32 total_count = 2;
+}
+
+// ResumeEngagement — formatted context for session resumption
+message ResumeEngagementResponse {
+  string engagement_id = 1;
+  string name = 2;
+  string status = 3;
+  string ultimate_goal = 4;
+  string summary = 5;
+  // Entries grouped by type for context reconstruction
+  repeated EntryGroup entry_groups = 6;
+}
+
+message EntryGroup {
+  string entry_type = 1;
+  repeated EntryResponse entries = 2;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Unified Search
+// ═══════════════════════════════════════════════════════════════════════════════
+
+message UnifiedSearchRequest {
+  string company_id = 1;
+  string project_id = 2;
+  string query = 3;
+  int32 limit = 4;
+  repeated string types = 5;  // knowledge, expertise, lessons, entries, memories
+}
+
+message UnifiedSearchResponse {
+  repeated UnifiedSearchResult results = 1;
+  int32 total_count = 2;
+}
+
+message UnifiedSearchResult {
+  string entity_type = 1;     // knowledge, expertise, lesson, entry, memory
+  string id = 2;
+  string title = 3;
+  string snippet = 4;         // text preview
+  double score = 5;
+  google.protobuf.Struct metadata = 6;
+}

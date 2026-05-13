@@ -1,0 +1,98 @@
+# Core dependencies
+fastapi>=0.100.0
+
+# Chunking service (semantic chunking with Gemini embeddings)
+# Pinned to specific versions to prevent pip resolution-too-deep errors
+chonkie[semantic,gemini]==1.5.2
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.9
+mem0ai==1.0.0
+qdrant-client>=1.7.0
+neo4j>=5.15.0
+google-generativeai==0.8.5
+google-genai>=1.28.0
+httpx>=0.25.0
+
+# MCP Server
+fastmcp==2.13.0.2
+
+# Transitive dependencies pinned to fix resolution-too-deep error
+# (fastmcp/langgraph/google-* have complex transitive deps)
+py-key-value-aio[disk,memory]==0.2.8
+py-key-value-shared==0.2.8
+proto-plus==1.26.1
+protobuf==5.29.3
+google-ai-generativelanguage==0.6.15
+mcp==1.21.1
+# grpcio-status<1.72.0 required: google-api-core pulls grpcio-status as transitive dep,
+# and grpcio-status>=1.72.0 requires protobuf>=6.30.0 which conflicts with protobuf==5.29.3
+# (google-ai-generativelanguage==0.6.15 requires protobuf<6.0dev)
+grpcio-status>=1.60.0,<1.72.0
+# fastembed==0.6.0 pinned: prevents pip from backtracking to 0.5.x which require pillow<11.0.0
+# and have mmh3<5.0.0 (no pre-built cp313 wheel), causing source build failures.
+fastembed==0.6.0
+# langgraph-sdk==0.1.74
+# langgraph-checkpoint==2.1.2
+# langchain-core==0.3.62
+orjson==3.10.18
+
+# Utilities
+python-dotenv>=1.0.0
+tiktoken>=0.5.0
+pydantic[email]>=2.0.0
+loguru>=0.7.0
+aiofiles>=23.2.1
+aiokafka>=0.10.0
+aiolimiter>=1.2.1
+apscheduler>=3.10.0
+
+# LangGraph (workflow orchestration)
+# Pinned to prevent resolution explosion with langchain ecosystem
+# Note: langgraph 0.5.4 requires langgraph-checkpoint<3.0.0
+# langgraph==0.5.4
+# langgraph-checkpoint-postgres==2.0.25
+
+# Document extraction
+pypdf>=4.0.0
+python-docx>=1.1.0
+python-pptx>=0.6.21
+
+# Database migrations
+alembic>=1.13.0
+sqlalchemy>=2.0.0
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.10
+
+# MongoDB
+pymongo>=4.6.0
+
+# Redis (for token blacklisting)
+redis>=5.0.0
+
+# Authentication & password hashing
+passlib[bcrypt]==1.7.4
+bcrypt>=4.1.2,<5.0.0
+python-jose[cryptography]>=3.3.0
+
+# TOTP 2FA
+pyotp>=2.9.0
+# Pinned to 11.3.0: fastembed<=0.6.0 requires pillow<12.0.0, and 11.3.0 is the last
+# version with a pre-built cp313 aarch64 wheel before 12.x's manylinux_2_27 split.
+# Also prevents pip backtracking to 10.3.0 (no Python 3.13 wheel, source build fails).
+Pillow>=10.4.0,<12.0.0
+qrcode[pil]>=7.4
+cryptography>=41.0.0
+
+# Email Service (Infobip)
+# infobip-api-python-sdk>=5.0.0
+infobip-api-python-client==6.0.0
+
+# OAuth2 Client
+authlib>=1.3.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+psutil>=5.9.0

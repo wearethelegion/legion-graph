@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package kgrag.document_search;
+
+// Document Search Service — six deterministic primitives + Health.
+// 7 unary RPCs only. No LLM dependency on the backend.
+// Agentic search runs in the MCP / CLI tool layer (T3 useBrain extension).
+//
+// Tenancy: company_id is derived server-side from the JWT. The client MUST NOT
+// supply a company_id field — mirroring code_search.proto T10.A pattern.
+//
+// Knowledge is company-scoped (not project-scoped). Confirmed by probing cognee
+// Neo4j 2026-04-29: source_node_set = "{company_id}_knowledge" (no project_id).
+service DocumentSearchService {
+  rpc GetCollections(GetCollectionsRequest)         returns (GetCollectionsResponse);
+  rpc SearchDocuments(SearchDocumentsRequest)       returns (SearchDocumentsResponse);
+  rpc GetDocumentChunk(GetDocumentChunkRequest)     returns (GetDocumentChunkResponse);
+  rpc SearchDocumentSummaries(SearchDocumentSummariesRequest) returns (SearchDocumentSummariesResponse);
+  rpc TraverseDocumentGraph(TraverseDocumentGraphRequest)     returns (TraverseDocumentGraphResponse);
+  rpc FullDocumentSearch(FullDocumentSearchRequest) returns (FullDocumentSearchResponse);
+  rpc Health(HealthRequest)                         returns (HealthResponse);
+}
+
+// ── Shared sub-messages ───────────────────────────────────────────────────────
+
+// A knowledge collection (NodeSet) for a company.
+message CollectionInfo {
+  string name        = 1;  // e.g. "cc6bdaf4-..._knowledge"
+  string id          = 2;  // NodeSet UUID
+  string description = 3;
+}
+
+// A knowledge document chunk returned by SearchDocuments.
+message DocumentChunk {
+  string chunk_id        = 1;
+  string text            = 2;
+  string file_path       = 3;  // e.g. "document://knowledge/{file_version_id}"
+  string language        = 4;  // usually "markdown" for ingested docs
+  string repository      = 5;  // e.g. "kgrag-documents"
+  int32  chunk_index     = 6;
+  string file_version_id = 7;
+  string source_node_set = 8;  // e.g. "{company_id}_knowledge"
+  float  score           = 9;
+}
+
+// A knowledge document summary returned by SearchDocumentSummaries.
+message DocumentSummary {
+  string text            = 1;
+  string file_version_id = 2;
+  string source_node_set = 3;
+  float  score           = 4;
+}
+
+// A knowledge entity (extracted from document).
+message DocumentEntity {
+  string entity_id       = 1;
+  string name            = 2;
+  string entity_type     = 3;
+  string description     = 4;
+  string source_node_set = 5;
+  float  score           = 6;
+}
+
+// A graph edge in the document knowledge graph.
+message DocumentGraphEdge {
+  string source          = 1;
+  string relationship    = 2;
+  string target          = 3;
+  string target_type     = 4;
+  string source_node_set = 5;
+}
+
+// ── GetCollections ────────────────────────────────────────────────────────────
+
+message GetCollectionsRequest {
+  string user_token = 1;  // JWT; company_id derived server-side
+}
+
+message GetCollectionsResponse {
+  repeated CollectionInfo collections = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── SearchDocuments ───────────────────────────────────────────────────────────
+
+message SearchDocumentsRequest {
+  string user_token  = 1;  // JWT; company_id derived server-side
+  string query       = 2;  // required
+  string collection  = 3;  // optional: specific source_node_set to scope to
+  int32  limit       = 4;  // default 10
+}
+
+message SearchDocumentsResponse {
+  repeated DocumentChunk results = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── GetDocumentChunk ──────────────────────────────────────────────────────────
+
+message GetDocumentChunkRequest {
+  string user_token = 1;  // JWT; company_id derived server-side
+  string chunk_id   = 2;  // required; DocumentChunk.id in cognee Neo4j
+}
+
+message GetDocumentChunkResponse {
+  string status        = 1;
+  string chunk_id      = 2;
+  string text          = 3;
+  string file_path     = 4;
+  string language      = 5;
+  string repository    = 6;
+  string branch        = 7;
+  int32  chunk_index   = 8;
+  int32  chunk_size    = 9;
+  string file_version_id = 10;
+  string source_node_set = 11;
+  string company_id    = 12;
+  string description   = 13;
+  string error_message = 14;
+  string error_code    = 15;
+}
+
+// ── SearchDocumentSummaries ───────────────────────────────────────────────────
+
+message SearchDocumentSummariesRequest {
+  string user_token = 1;  // JWT; company_id derived server-side
+  string query      = 2;  // required
+  int32  limit      = 3;  // default 10
+}
+
+message SearchDocumentSummariesResponse {
+  repeated DocumentSummary results = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── TraverseDocumentGraph ─────────────────────────────────────────────────────
+
+message TraverseDocumentGraphRequest {
+  string user_token   = 1;  // JWT; company_id derived server-side
+  string entity_name  = 2;  // required
+}
+
+message TraverseDocumentGraphResponse {
+  repeated DocumentGraphEdge edges = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── FullDocumentSearch ────────────────────────────────────────────────────────
+
+message FullDocumentSearchRequest {
+  string user_token = 1;  // JWT; company_id derived server-side
+  string query      = 2;  // required
+  int32  limit      = 3;  // default 10
+}
+
+message FullDocumentSearchResponse {
+  repeated CollectionInfo    collections = 1;
+  repeated DocumentChunk     chunks      = 2;
+  repeated DocumentSummary   summaries   = 3;
+  repeated DocumentEntity    entities    = 4;
+  string error_message = 5;
+  string error_code    = 6;
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status  = 1;  // ok | degraded | error
+  string message = 2;
+}

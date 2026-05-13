@@ -1,0 +1,90 @@
+# ============================================================
+# kgrag-base — shared base image
+# ALL kgrag child images (ingestion, search, auth, rest-api)
+# inherit from this image.
+#
+# Build with:
+#   docker build -f Dockerfile.base -t kgrag-base:latest .
+#
+# DO NOT run this image directly; it has no runtime CMD.
+# ============================================================
+
+FROM python:3.13-slim
+
+LABEL maintainer="kgrag"
+LABEL description="kgrag shared base image — all child images inherit this layer"
+
+# ── System dependencies ──────────────────────────────────────
+# build-essential: required for cognee + neo4j driver source builds
+# curl:            healthcheck probes in child images
+# git:             gitpython in code_preprocessor; cognee may call git
+# libjpeg-dev, zlib1g-dev: Pillow source build fallback
+# libpq-dev:       psycopg2-binary source build fallback
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+        libjpeg-dev \
+        zlib1g-dev \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Working directory ────────────────────────────────────────
+WORKDIR /app
+
+# ── Upgrade pip ──────────────────────────────────────────────
+RUN pip install --no-cache-dir --upgrade pip
+
+# ── Install Qdrant community adapter FIRST (no-deps) ─────────
+# Must be installed before cognee to prevent it from pulling a stale
+# conflicting cognee version. See graph_services/Dockerfile.v2pipeline.
+RUN pip install --no-cache-dir --ignore-requires-python --no-deps \
+        cognee-community-vector-adapter-qdrant
+
+# ── Install all shared Python dependencies ───────────────────
+# Uses legacy resolver to handle complex transitive dependency graph:
+# google-ai-generativelanguage==0.6.15 pins protobuf<6.0dev while
+# cognee/grpcio transitive deps prefer newer protobuf. The legacy
+# resolver resolves this correctly without hitting resolution-too-deep.
+COPY requirements-base.txt .
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver \
+        -r requirements-base.txt
+
+# ── Apply patches to installed Cognee package ─────────────────
+# gemini_adapter.py: Gemini json_mode array-wrapping fix
+#   (unwraps single-element arrays returned by Gemini structured output)
+# index_data_points.py: embedding concurrency fix
+#   (adds module-level semaphore to prevent race in batch embedding)
+# Source: graph_services/patches/cognee/
+# Pattern: exact copy of lines 34-40 from graph_services/Dockerfile.v2pipeline
+COPY graph_services/patches/cognee/gemini_adapter.py \
+     graph_services/patches/cognee/index_data_points.py \
+     /tmp/cognee_patches/
+RUN COGNEE_SITE=$(python -c "import cognee; import os; print(os.path.dirname(cognee.__file__))") \
+    && cp /tmp/cognee_patches/gemini_adapter.py \
+       "$COGNEE_SITE/infrastructure/llm/structured_output_framework/litellm_instructor/llm/gemini/adapter.py" \
+    && cp /tmp/cognee_patches/index_data_points.py \
+       "$COGNEE_SITE/tasks/storage/index_data_points.py" \
+    && rm -rf /tmp/cognee_patches \
+    && echo "cognee patches applied successfully"
+
+# ── Copy shared source modules ────────────────────────────────
+# These modules are imported by ALL child images.
+COPY shared/ /app/shared/
+COPY kgrag/ /app/kgrag/
+# cognee_service is placed at /app/cognee_service/ (NOT /app/graph_services/cognee_service/)
+# because ingestion services import `from cognee_service.X` with PYTHONPATH=/app.
+# The original Dockerfile.v2pipeline used: WORKDIR /app && COPY cognee_service/ ./cognee_service/
+COPY graph_services/cognee_service/ /app/cognee_service/
+
+# ── Copy proto generation scripts (needed by Dockerfile.search) 
+COPY scripts/generate_protos.sh scripts/patch_protobuf_version.py /app/scripts/
+
+# ── Runtime environment ───────────────────────────────────────
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# ── Placeholder CMD (child images MUST override) ─────────────
+CMD ["python"]

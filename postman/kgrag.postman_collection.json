@@ -1,0 +1,582 @@
+{
+  "info": {
+    "name": "kgrag",
+    "description": "End-to-end flow with FULL request bodies (every field, required + optional, with sample values).\n\nFlow: register user → login → create company → create project → ingest code → ingest documents (Brain) → search.\n\nUsage:\n1. Import this collection AND the matching environment (kgrag.postman_environment.json).\n2. Select the `kgrag-local` environment.\n3. Edit environment variables (user_email, user_password, company_name, ...) to taste.\n4. Run the requests IN ORDER — each `create` request auto-saves the returned id into the environment.\n\nServers (local Docker stack):\n- Auth:     http://localhost:8001\n- REST API: http://localhost:8000\n\nAuthentication: Login stores `access_token` into the environment. Collection-level Bearer auth uses `{{access_token}}` for every request after Login. Health checks, /register and /login override with `noauth`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{access_token}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register user",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{auth_url}}/register", "host": ["{{auth_url}}"], "path": ["register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"username\": \"{{user_username}}\",\n  \"password\": \"{{user_password}}\",\n  \"roles\": [\"user\"]\n}"
+            },
+            "description": "Creates a new user.\n\nSchema (`auth.UserCreate`):\n- `email`    EmailStr  REQUIRED\n- `username` str       REQUIRED (3-50 chars)\n- `password` str       REQUIRED (min 8 chars)\n- `roles`    list[str] optional (default `[\"user\"]`; allowed values include `\"user\"`, `\"admin\"`)\n\nResponse: `UserResponse` (id, email, username, roles, is_active, is_superuser, created_at, profile fields).\nTest script saves `user_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.environment.set('user_id', body.id);",
+                  "        console.log('Saved user_id =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{auth_url}}/login", "host": ["{{auth_url}}"], "path": ["login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+            },
+            "description": "Exchanges credentials for tokens.\n\nSchema (`auth.UserLogin`):\n- `email`    EmailStr REQUIRED\n- `password` str      REQUIRED\n\nResponse: `TokenResponse` (`access_token`, `refresh_token`, `token_type=\"bearer\"`, `expires_in`).\nIf the account has 2FA enabled, response is `TwoFactorChallengeResponse` (`requires_2fa=true`, `challenge_token`) — complete via POST /login/2fa.\n\nTest script saves `access_token` and `refresh_token` to the environment."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.access_token) {",
+                  "        pm.environment.set('access_token', body.access_token);",
+                  "        console.log('access_token stored');",
+                  "    }",
+                  "    if (body.refresh_token) {",
+                  "        pm.environment.set('refresh_token', body.refresh_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{auth_url}}/refresh", "host": ["{{auth_url}}"], "path": ["refresh"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "description": "Exchanges a refresh token for a new access token.\n\nField:\n- `refresh_token`  str  REQUIRED (returned by /login)\n\nResponse: `TokenResponse`. Test script overwrites `access_token`/`refresh_token` in the environment."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.access_token) pm.environment.set('access_token', body.access_token);",
+                  "    if (body.refresh_token) pm.environment.set('refresh_token', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Whoami",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{auth_url}}/users/me", "host": ["{{auth_url}}"], "path": ["users", "me"] },
+            "description": "Returns the current authenticated user (id, email, username, roles, companies, is_active, is_superuser, profile fields). Sanity check for the JWT."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Company",
+      "item": [
+        {
+          "name": "Create company",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{auth_url}}/companies", "host": ["{{auth_url}}"], "path": ["companies"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{company_name}}\"\n}"
+            },
+            "description": "Creates a new company; the current user becomes its owner.\n\nSchema (`auth.CompanyCreate`):\n- `name`  str  REQUIRED (1-200 chars)\n\nResponse: `CompanyResponse` (`id`, `name`, `created_at`, `is_active`, `user_count`, `cognee_enabled`).\nTest script saves `company_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.environment.set('company_id', body.id);",
+                  "        console.log('Saved company_id =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List my companies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{auth_url}}/companies", "host": ["{{auth_url}}"], "path": ["companies"] },
+            "description": "Lists every company the current user belongs to."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Project",
+      "item": [
+        {
+          "name": "Create project (FULL — every field)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/companies/{{company_id}}/projects",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "companies", "{{company_id}}", "projects"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{project_name}}\",\n  \"description\": \"Demo monorepo for kgrag onboarding\",\n  \"instructions\": {\n    \"description\": \"Public REST + gRPC backend for the kgrag stack\",\n    \"languages\": [\"python\", \"sql\"],\n    \"frameworks\": [\"fastapi\", \"asyncpg\", \"grpcio\", \"cognee\"],\n    \"tools\": [\"postgres\", \"qdrant\", \"neo4j\", \"redpanda\", \"redis\"],\n    \"architecture_notes\": \"Kafka-driven ingestion pipeline; Cognee handles search.\",\n    \"conventions\": \"snake_case, async/await everywhere, no MongoDB\",\n    \"custom_instructions\": \"Always run pytest before merging; never commit .env.\"\n  }\n}"
+            },
+            "description": "Creates a project under a company with full instructions filled in.\n\nSchema (`api.models.project.ProjectCreate`):\n- `name`         str  REQUIRED (1-255 chars). NOTE: search endpoints slugify this when used as the project scope (e.g. `vet_ui` → `vet-ui`).\n- `description`  str  optional\n- `instructions` ProjectInstructionsCreate  optional. ALL sub-fields optional:\n  - `description`         str        — what the project is\n  - `languages`           list[str]  — programming languages used\n  - `frameworks`          list[str]  — frameworks used\n  - `tools`               list[str]  — tools and infrastructure\n  - `architecture_notes`  str        — key architectural decisions\n  - `conventions`         str        — project-specific patterns\n  - `custom_instructions` str        — anything else\n\nResponse: `ProjectResponse` (id, company_id, name, description, webhook_url, github_webhook_secret, github_token_set, created_at, updated_at, instructions{}).\nTest script saves `project_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.environment.set('project_id', body.id);",
+                  "        console.log('Saved project_id =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create project (MINIMAL — only required fields)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/companies/{{company_id}}/projects",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "companies", "{{company_id}}", "projects"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{project_name}}\"\n}"
+            },
+            "description": "Same endpoint as the FULL variant — shows the minimum body. `description` and `instructions` are optional."
+          }
+        },
+        {
+          "name": "List projects (in a company)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/companies/{{company_id}}/projects",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "companies", "{{company_id}}", "projects"]
+            },
+            "description": "Lists all projects in the given company.\n\nGET /api/v1/companies/{company_id}/projects → `ProjectListResponse { projects: [...], total: int }`."
+          }
+        },
+        {
+          "name": "Get project details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/projects/{{project_id}}",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            },
+            "description": "Returns `ProjectResponse`:\n- `id`, `company_id`, `name`, `description`, `created_at`, `updated_at`\n- `webhook_url` — URL configured for GitHub webhooks (e.g. `http://<host>:8000/api/v1/webhooks/github/{company_name}/{project_name}`)\n- `github_webhook_secret` — MASKED preview (full value only shown once via Regenerate)\n- `github_token_set` — `bool` indicating if a PAT is configured for this project. The token itself is NEVER returned.\n- `instructions` — embedded `ProjectInstructionsEmbedded` object"
+          }
+        },
+        {
+          "name": "Update project — github_token + everything else",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/projects/{{project_id}}",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{project_name}}\",\n  \"description\": \"Updated description\",\n  \"github_token\": \"ghp_yourpersonalaccesstoken\",\n  \"instructions\": {\n    \"description\": \"Updated project description\",\n    \"languages\": [\"python\"],\n    \"frameworks\": [\"fastapi\"],\n    \"tools\": [\"postgres\", \"qdrant\", \"neo4j\"],\n    \"architecture_notes\": \"Updated notes\",\n    \"conventions\": \"Updated conventions\",\n    \"custom_instructions\": \"Updated extras\"\n  }\n}"
+            },
+            "description": "Updates a project. Method is **PUT** (per `projects_v2.py:146`). Schema (`api.models.project.ProjectUpdate`) — ALL fields optional, send any subset; COALESCE semantics (omitted fields keep current values):\n- `name`         str | null\n- `description`  str | null\n- `github_token` str | null — per-project GitHub PAT for cloning private repos. Stored in `projects.github_token`. Falls back to env `GITHUB_TOKEN` if unset. NEVER returned in responses (only `github_token_set: bool`).\n- `instructions` ProjectInstructionsCreate | null — upserted if provided.\n\nReturns updated `ProjectResponse`."
+          }
+        },
+        {
+          "name": "Regenerate webhook secret (returns secret ONCE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/projects/{{project_id}}/regenerate-webhook-secret",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "regenerate-webhook-secret"]
+            },
+            "description": "Generates a fresh HMAC-SHA256 secret used to authenticate GitHub push webhooks for this project.\n\n**⚠ The full secret is returned ONLY ONCE in this response.** After this call, GET /projects/{id} only returns a masked preview.\n\nResponse: `WebhookSecretResponse`:\n- `project_id`            str\n- `webhook_url`           str — full URL to put in GitHub's webhook config (`http://<host>:8000/api/v1/webhooks/github/{company_name}/{project_name}`)\n- `github_webhook_secret` str — the new secret (copy now)\n- `message`               str\n\nUse when: setting up a new webhook integration, rotating after suspected compromise, or for security hygiene.\n\nAfter regenerating, configure your GitHub repo:\n- Webhook URL: the `webhook_url` from response\n- Content type: `application/json`\n- Secret: the `github_webhook_secret` from response\n- Events: push (and optionally `pull_request`, `create`)\n- Active: ✔"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.github_webhook_secret) {",
+                  "        pm.environment.set('github_webhook_secret', body.github_webhook_secret);",
+                  "        console.log('Saved github_webhook_secret (visible once) to environment.');",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transfer project to another company",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/projects/{{project_id}}/transfer-company",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}", "transfer-company"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_company_id\": \"<target_company_uuid>\"\n}"
+            },
+            "description": "Transfers a project and ALL project-scoped data to another company.\n\nSchema (`ProjectTransferRequest`):\n- `target_company_id` str  REQUIRED — UUID of the destination company\n\nMigrates ownership/scope across:\n- PostgreSQL (project row + repositories + branches + instructions + engagements + tasks)\n- Neo4j (every node with `project_id`)\n- Qdrant (every point with `project_id` metadata)\n- MongoDB ingestions (legacy table — may be a no-op if mongodb is not deployed)\n\nIncludes validation, authorization, idempotency checks, and a best-effort compensation attempt if PostgreSQL transfer fails after the external moves.\n\nResponse: `ProjectTransferResponse` with per-database status."
+          }
+        },
+        {
+          "name": "Delete project (DESTRUCTIVE)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/projects/{{project_id}}",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            },
+            "description": "**⚠ DESTRUCTIVE — cannot be undone.** Deletes the project and everything scoped to it:\n\n- PostgreSQL: `projects` row (cascades to repositories, branches, engagements, tasks, task_artifacts, project_instructions)\n- Neo4j: every node with this `project_id` (Project, Repository, Branch, Document, Code, Entity, Knowledge, Expertise, Fact)\n- Qdrant: every vector with this `project_id` in metadata\n- Local filesystem: cloned git repositories under `rag_storage/repos`\n\nReturns deletion statistics per database."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Code ingestion",
+      "item": [
+        {
+          "name": "Queue code ingestion (FULL — every field)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/code_ingestion",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "code_ingestion"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repository\": \"{{repository}}\",\n  \"branch\": \"{{branch}}\",\n  \"framework\": \"{{framework}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"force_full_refresh\": false\n}"
+            },
+            "description": "Publishes a `RepositoryIngestionRequest` to Kafka topic `incoming_requests`. Returns `202 Accepted` immediately — ingestion runs asynchronously.\n\nSchema (`api.routes.ingestion.RepositoryRequest`):\n- `repository`          str   REQUIRED (1+ chars). Typically `owner/name`; the worker resolves it to a clone URL.\n- `branch`              str   REQUIRED (1+ chars). e.g. `main`, `develop`.\n- `framework`           str   REQUIRED (1+ chars). Classifier hint: `python`, `node`, `rails`, `go`, ...\n- `project_id`          str   REQUIRED (UUID). Must reference an existing project the JWT user has access to.\n- `force_full_refresh`  bool  optional (default `false`). When `true`, every file is re-processed regardless of git diff.\n\nGitHub auth resolution (in order):\n1. `projects.github_token` for this `project_id` (set via PATCH /api/v1/projects/{id}).\n2. env `GITHUB_TOKEN` (global fallback).\n3. no token (public repos only).\n\nDownstream: code-preprocessor → entity-extraction + summarization + qdrant-storage (parallel) → embedding → qdrant-storage + neo4j-storage.\n\nResponse:\n```json\n{\n  \"status\": \"queued\",\n  \"repository\": \"...\",\n  \"project_id\": \"...\",\n  \"company_id\": \"...\",\n  \"topic\": \"incoming_requests\",\n  \"branch\": \"...\",\n  \"framework\": \"...\",\n  \"force_full_refresh\": false\n}\n```"
+          }
+        },
+        {
+          "name": "Queue code ingestion (force_full_refresh=true)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/code_ingestion",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "code_ingestion"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repository\": \"{{repository}}\",\n  \"branch\": \"{{branch}}\",\n  \"framework\": \"{{framework}}\",\n  \"project_id\": \"{{project_id}}\",\n  \"force_full_refresh\": true\n}"
+            },
+            "description": "Same as the FULL variant but with `force_full_refresh=true`. Use after changing chunker/prompts/schemas or to reprocess a stale dataset."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Document ingestion (Brain)",
+      "item": [
+        {
+          "name": "Add KNOWLEDGE (markdown)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/brain", "host": ["{{api_url}}"], "path": ["api", "v1", "brain"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"KNOWLEDGE\",\n  \"title\": \"Onboarding doc — auth flow\",\n  \"content\": \"# Auth Flow\\n\\n1. POST /register → user created.\\n2. POST /login → returns access_token + refresh_token.\\n3. Include `Authorization: Bearer <token>` on every request.\\n\\n## Notes\\n- Tokens expire per `ACCESS_TOKEN_EXPIRE_MINUTES`.\\n- Refresh via POST /refresh.\",\n  \"metadata\": {\n    \"source\": \"postman-collection\",\n    \"author\": \"demo-user\",\n    \"topic\": \"auth\"\n  }\n}"
+            },
+            "description": "Adds a KNOWLEDGE item.\n\nProto schema (`kgrag.brain.AddToBrainRequest`):\n- `kind`        enum  REQUIRED — `KNOWLEDGE` (2) | `EXPERTISE` (1) | `LESSON` (3). REST accepts the string name.\n- `title`       str   REQUIRED\n- `content`     str   REQUIRED — Markdown text as a string (NO file upload).\n- `metadata`    map<str,str> optional — arbitrary tagging.\n- `when_to_use` str   optional — EXPERTISE-only. Ignored for KNOWLEDGE/LESSON.\n- `symptom`     str   optional — LESSON-only.\n- `root_cause`  str   optional — LESSON-only.\n- `solution`    str   optional — LESSON-only.\n- `prevention`  str   optional — LESSON-only.\n- `severity`    str   optional — LESSON-only. `\"low\"` | `\"medium\"` | `\"high\"` | `\"critical\"` | `\"\"`.\n\nFlow: REST mints Cognee JWT → `BrainContentService.AddToBrain` on `kgrag-cognee:50052` → Postgres write + Kafka `brain_events` → document-preprocessor chunks/embeds → `enriched-code-chunks` → entity-extraction + summarization → embedding → Qdrant `{company_id}_knowledge` + Neo4j `cognee-{company_id}`.\n\nScope = company derived from JWT. `company_id` is never client-supplied.\n\nTest script saves `brain_content_id`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.environment.set('brain_content_id', body.id);",
+                  "        console.log('Saved brain_content_id =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add EXPERTISE (FULL — every field)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/brain", "host": ["{{api_url}}"], "path": ["api", "v1", "brain"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"EXPERTISE\",\n  \"title\": \"Diagnosing Neo4j auth failures\",\n  \"content\": \"# Neo4j auth failure playbook\\n\\nIf you see `WARN The client is unauthorized due to authentication failure` repeatedly:\\n\\n1. The volume was initialised with a different password than what's now in .env.\\n2. Either reset the volume (dev) or change the env to match (prod).\\n\\n## Reset volume\\n```bash\\ndocker compose stop neo4j\\ndocker volume rm <project>_neo4j_data\\ndocker compose up -d neo4j\\n```\",\n  \"when_to_use\": \"Apply when Neo4j logs show repeated bolt-auth-failure warnings on startup.\",\n  \"metadata\": {\n    \"area\": \"infra\",\n    \"component\": \"neo4j\"\n  }\n}"
+            },
+            "description": "Adds an EXPERTISE item. EXPERTISE-specific extras:\n- `when_to_use` — short hint about when this expertise should be applied. Used during retrieval scoring.\n\nLESSON-specific fields (`symptom`, `root_cause`, `solution`, `prevention`, `severity`) are IGNORED for EXPERTISE."
+          }
+        },
+        {
+          "name": "Add LESSON (FULL — every field, full postmortem)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/brain", "host": ["{{api_url}}"], "path": ["api", "v1", "brain"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"LESSON\",\n  \"title\": \"REST API container couldn't read .env when compose ran from subdir\",\n  \"content\": \"# Symptom\\nkgrag-rest-api container had `GEMINI_API_KEY=` (empty) even though .env contained the key.\\n\\n# Fix\\nAdded `--env-file ./.env` to every docker compose invocation via the Makefile.\\n\\n# Why this happened\\nDocker compose resolves `.env` relative to the compose file's directory (or CWD), not the repo root. Our compose lives at `docker/docker-compose.yml`, so without `--env-file` it looked for `docker/.env`.\",\n  \"symptom\": \"Empty env vars in container despite values being present in .env.\",\n  \"root_cause\": \"docker compose looks for .env next to the compose file, not the repo root.\",\n  \"solution\": \"Pass --env-file <path/to/.env> on every compose invocation; bake it into the Makefile.\",\n  \"prevention\": \"Add a Makefile-only invocation pattern; document the requirement in SETUP.md.\",\n  \"severity\": \"medium\",\n  \"metadata\": {\n    \"area\": \"infra\",\n    \"component\": \"docker-compose\",\n    \"detected_in\": \"Phase 4 dev run\"\n  }\n}"
+            },
+            "description": "Adds a LESSON item with full postmortem fields.\n\nLESSON-specific extras (all optional, recommended for incident records):\n- `symptom`     str — what was observed\n- `root_cause`  str — underlying reason\n- `solution`    str — how it was fixed\n- `prevention`  str — how to avoid recurrence\n- `severity`    str — `\"low\"` | `\"medium\"` | `\"high\"` | `\"critical\"` | `\"\"`\n\n`when_to_use` is IGNORED for LESSON."
+          }
+        },
+        {
+          "name": "List brain content",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/brain?kind=KNOWLEDGE&page=1&page_size=20",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "brain"],
+              "query": [
+                { "key": "kind",      "value": "KNOWLEDGE", "description": "REQUIRED. One of KNOWLEDGE | EXPERTISE | LESSON." },
+                { "key": "page",      "value": "1",         "description": "Optional, default 1, min 1." },
+                { "key": "page_size", "value": "20",        "description": "Optional, default 20." }
+              ]
+            },
+            "description": "Lists brain items of a single `kind` for the company derived from the JWT. Paginated."
+          }
+        },
+        {
+          "name": "Get brain item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/brain/{{brain_content_id}}?kind=KNOWLEDGE",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "brain", "{{brain_content_id}}"],
+              "query": [{ "key": "kind", "value": "KNOWLEDGE", "description": "REQUIRED. Must match the kind it was created with." }]
+            },
+            "description": "Get a single brain content row. `kind` query param is required (tables are kind-partitioned)."
+          }
+        },
+        {
+          "name": "Update brain item (FULL — every field)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{api_url}}/api/v1/brain/{{brain_content_id}}",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "brain", "{{brain_content_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"KNOWLEDGE\",\n  \"title\": \"Onboarding doc — auth flow (v2)\",\n  \"content\": \"# Auth Flow (revised)\\n…\",\n  \"metadata\": { \"version\": \"2\", \"updated_by\": \"demo\" },\n  \"when_to_use\": \"\",\n  \"symptom\": \"\",\n  \"root_cause\": \"\",\n  \"solution\": \"\",\n  \"prevention\": \"\",\n  \"severity\": \"\"\n}"
+            },
+            "description": "Updates a brain item. `kind` is REQUIRED and must match the kind at creation. `title` and `content` are optional (omit to keep current). `metadata` replaces existing metadata when sent. Kind-specific fields irrelevant to the row's kind are ignored."
+          }
+        },
+        {
+          "name": "Delete brain item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{api_url}}/api/v1/brain/{{brain_content_id}}?kind=KNOWLEDGE",
+              "host": ["{{api_url}}"],
+              "path": ["api", "v1", "brain", "{{brain_content_id}}"],
+              "query": [{ "key": "kind", "value": "KNOWLEDGE", "description": "REQUIRED. Must match the kind it was created with." }]
+            },
+            "description": "Deletes a brain content row."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Search",
+      "item": [
+        {
+          "name": "Search code (FULL — every field)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/code/search", "host": ["{{api_url}}"], "path": ["api", "v1", "code", "search"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"how is JWT validated on incoming requests\",\n  \"project_id\": \"{{project_id}}\",\n  \"project_name\": \"{{project_name}}\",\n  \"search_type\": \"CHUNKS_LEXICAL\",\n  \"limit\": 10,\n  \"depth\": \"thorough\",\n  \"system_prompt\": \"\",\n  \"top_k\": 0,\n  \"wide_search_top_k\": 0\n}"
+            },
+            "description": "Project-scoped code search via Cognee. Routing: REST → mints Cognee JWT → gRPC `CogneeService.FlexibleCodeSearch` on `kgrag-cognee:50052`.\n\nFields:\n- `query`               str   REQUIRED  — search question\n- `project_id`          UUID  REQUIRED  — project to scope to\n- `project_name`        str   REQUIRED  — namespace anchor. Server slugifies (`vet_ui` → `vet-ui`).\n- `search_type`         str   optional, default `\"CHUNKS_LEXICAL\"`. Allowed:\n    `\"CHUNKS\"`, `\"CHUNKS_LEXICAL\"`, `\"RAG_COMPLETION\"`, `\"SUMMARIES\"`,\n    `\"GRAPH_COMPLETION\"`, `\"GRAPH_SUMMARY_COMPLETION\"`,\n    `\"GRAPH_COMPLETION_COT\"`, `\"GRAPH_COMPLETION_CONTEXT_EXTENSION\"`,\n    `\"FEELING_LUCKY\"`, `\"TEMPORAL\"`, `\"TRIPLET_COMPLETION\"`.\n- `limit`               int   optional, 1-100, default 10\n- `depth`               str   optional, `\"concise\"` | `\"standard\"` | `\"thorough\"` (default `\"thorough\"`). Picks `system_prompt` + `top_k` presets.\n- `system_prompt`       str   optional. Raw override; takes precedence over `depth`. Empty string = use depth preset.\n- `top_k`               int   optional, default 0 (= use depth preset). Number of vector hits.\n- `wide_search_top_k`   int   optional, default 0 (= use depth preset). Wider candidate pool for fusion.\n\n`company_id` is derived from JWT — never client-supplied."
+          }
+        },
+        {
+          "name": "Search code (GRAPH_COMPLETION)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/code/search", "host": ["{{api_url}}"], "path": ["api", "v1", "code", "search"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"what does the authenticate function depend on\",\n  \"project_id\": \"{{project_id}}\",\n  \"project_name\": \"{{project_name}}\",\n  \"search_type\": \"GRAPH_COMPLETION\",\n  \"limit\": 5,\n  \"depth\": \"standard\"\n}"
+            },
+            "description": "Same endpoint as 'Search code (FULL)' but `search_type=GRAPH_COMPLETION` — walks the code call graph from query-anchored entities + LLM completion. Best for impact / dependency questions."
+          }
+        },
+        {
+          "name": "Search code (CHUNKS — pure vector)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/code/search", "host": ["{{api_url}}"], "path": ["api", "v1", "code", "search"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"function that hashes a password\",\n  \"project_id\": \"{{project_id}}\",\n  \"project_name\": \"{{project_name}}\",\n  \"search_type\": \"CHUNKS\",\n  \"limit\": 10\n}"
+            },
+            "description": "`search_type=CHUNKS` — pure vector similarity over code chunks. Best for fuzzy semantic matching where keyword overlap is low."
+          }
+        },
+        {
+          "name": "Search brain / documents (FULL — every field)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/brain/search", "host": ["{{api_url}}"], "path": ["api", "v1", "brain", "search"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"how do I fix neo4j auth failures\",\n  \"search_type\": \"CHUNKS\",\n  \"limit\": 10,\n  \"depth\": \"thorough\",\n  \"system_prompt\": \"\",\n  \"top_k\": 0,\n  \"wide_search_top_k\": 0\n}"
+            },
+            "description": "Hybrid semantic search over the company's brain (KNOWLEDGE + EXPERTISE + LESSON). Routing: REST → mints Cognee JWT → gRPC `CogneeService.FlexibleCogneeSearch` on `kgrag-cognee:50052`.\n\nFields:\n- `query`               str   REQUIRED\n- `search_type`         str   optional, default `\"CHUNKS\"`. Same enum as code search.\n- `limit`               int   optional, 1-100, default 10\n- `depth`               str   optional, `\"concise\"` | `\"standard\"` | `\"thorough\"` (default `\"thorough\"`).\n- `system_prompt`       str   optional. Raw override; takes precedence over `depth`.\n- `top_k`               int   optional, default 0.\n- `wide_search_top_k`   int   optional, default 0.\n\nScope = company derived from JWT. No client-supplied `company_id` / `project_id`."
+          }
+        },
+        {
+          "name": "Search brain (GRAPH_COMPLETION)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{api_url}}/api/v1/brain/search", "host": ["{{api_url}}"], "path": ["api", "v1", "brain", "search"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"summarise everything we learned about postgres password handling\",\n  \"search_type\": \"GRAPH_COMPLETION\",\n  \"limit\": 8,\n  \"depth\": \"thorough\"\n}"
+            },
+            "description": "Same endpoint, `search_type=GRAPH_COMPLETION` — graph traversal + LLM synthesis. Best for questions whose answer spans multiple brain items."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Z. Health checks",
+      "item": [
+        {
+          "name": "Auth /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{auth_url}}/health", "host": ["{{auth_url}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "REST API /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{api_url}}/health", "host": ["{{api_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    }
+  ]
+}

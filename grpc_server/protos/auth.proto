@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package kgrag.auth;
+
+// Authentication Service
+service AuthService {
+  rpc Authenticate(AuthRequest) returns (AuthResponse);
+  rpc GetProjects(GetProjectsRequest) returns (GetProjectsResponse);
+}
+
+// Messages
+message AuthRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  string status = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  string token_type = 4;
+  int32 expires_in = 5;
+  string user_email = 6;
+  string message = 7;
+}
+
+message GetProjectsRequest {
+  string user_token = 1;
+}
+
+message ProjectItem {
+  string id = 1;
+  string company_id = 2;
+  string name = 3;
+  string description = 4;
+  string company_name = 5;
+  bool cognee_enabled = 6;
+}
+
+message GetProjectsResponse {
+  string status = 1;
+  string message = 2;
+  int32 projects_count = 3;
+  repeated ProjectItem projects = 4;
+  string user_email = 5;
+}

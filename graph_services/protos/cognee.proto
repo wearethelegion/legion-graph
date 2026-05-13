@@ -1,0 +1,238 @@
+syntax = "proto3";
+
+package kgrag.cognee;
+
+// Cognee Knowledge Enrichment Service
+// Standalone gRPC microservice for graph-based knowledge enrichment via cognee.
+service CogneeService {
+  // Add text to a dataset and run cognify (graph enrichment)
+  rpc Cognify(CognifyRequest) returns (CognifyResponse);
+
+  // Search the cognee knowledge graph
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  // Flexible knowledge-only search
+  rpc FlexibleCogneeSearch(FlexibleCogneeSearchRequest) returns (FlexibleCogneeSearchResponse);
+
+  // Flexible code-only search
+  rpc FlexibleCodeSearch(FlexibleCodeSearchRequest) returns (FlexibleCodeSearchResponse);
+
+  // Prune (delete) a dataset from the knowledge graph
+  rpc Prune(PruneRequest) returns (PruneResponse);
+
+  // Health check
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ── Cognify ──────────────────────────────────────────────────────────────────
+
+message CognifyRequest {
+  // Text content to add and cognify
+  string text = 1;
+
+  // Dataset name (e.g. "knowledge", "expertise", "entries")
+  string dataset_name = 2;
+
+  // Entity ID for traceability (e.g. knowledge_id, expertise_id, entry_id)
+  string entity_id = 3;
+
+  // Optional free-form tags for filtering/metadata
+  repeated string tags = 4;
+
+  // Company ID — required for dataset isolation across tenants
+  string company_id = 5;
+}
+
+message CognifyResponse {
+  bool success = 1;
+  string message = 2;
+  string dataset_name = 3;
+  string entity_id = 4;
+
+  // LLM token usage tracking (accumulated across all LiteLLM calls during cognify)
+  int64 input_tokens = 5;
+  int64 output_tokens = 6;
+  int64 total_tokens = 7;
+  double estimated_cost_usd = 8;
+  double duration_seconds = 9;
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+
+// Maps to cognee.modules.search.types.SearchType Python enum.
+// Default (0) = GRAPH_COMPLETION for backwards compatibility.
+//
+// Access-control notes:
+//   CYPHER (6) and NATURAL_LANGUAGE (7) require admin/superuser role.
+//   These modes execute LLM-generated or user-supplied Cypher against Neo4j.
+//   Requests from non-admin callers are rejected with PERMISSION_DENIED.
+//
+// Observability notes:
+//   FEELING_LUCKY (10) logs and returns the actual resolved search type
+//   in SearchResponse.actual_search_type so callers can see what ran.
+enum SearchType {
+  GRAPH_COMPLETION                    = 0;
+  TRIPLET_COMPLETION                  = 1;
+  CHUNKS                              = 2;
+  RAG_COMPLETION                      = 3;
+  SUMMARIES                           = 4;
+  GRAPH_SUMMARY_COMPLETION            = 5;
+  CYPHER                              = 6;   // ADMIN ONLY: executes Cypher against Neo4j
+  NATURAL_LANGUAGE                    = 7;   // ADMIN ONLY: LLM-generated Cypher against Neo4j
+  GRAPH_COMPLETION_COT                = 8;
+  GRAPH_COMPLETION_CONTEXT_EXTENSION  = 9;
+  FEELING_LUCKY                       = 10;  // cognee selects mode; actual type logged in response
+  TEMPORAL                            = 11;
+  CODING_RULES                        = 12;
+  CHUNKS_LEXICAL                      = 13;
+}
+
+message SearchRequest {
+  string query = 1;
+  int32 limit = 2;
+
+  // Optional: restrict search to a specific dataset
+  string dataset_name = 3;
+
+  // Company ID — required for dataset isolation across tenants
+  string company_id = 4;
+
+  // Which cognee search type to use (default: GRAPH_COMPLETION)
+  SearchType search_type = 5;
+
+  // If true, skip LLM completion and return raw graph context only.
+  // Much faster for GRAPH_COMPLETION and TRIPLET_COMPLETION (~2s vs ~15s).
+  bool only_context = 6;
+
+  // Optional: scope search to a specific project's code.
+  // Combined with branch to build node_name filter: "{project_id}_{branch}_code"
+  string project_id = 7;
+
+  // Optional: branch name (default: "develop"). Used with project_id for scoping.
+  string branch = 8;
+
+  // Optional: override cognee's default wide_search_top_k (100).
+  // Graph modes (GRAPH_COMPLETION and variants) fetch this many node candidates
+  // in the vector phase before graph scoring. Increase to 300-500 for content
+  // queries against code-ingested data to improve recall.
+  // Value of 0 means "use cognee default (100)".
+  int32 wide_search_top_k = 9;
+
+  // Optional: override cognee's default triplet_distance_penalty (3.5).
+  // Lower values (0.5–1.0) include more graph-disconnected chunks, improving
+  // recall for domain-content queries. Higher values favour tightly connected
+  // entities (better for code-graph traversal).
+  // Value of 0.0 means "use cognee default (3.5)".
+  float triplet_distance_penalty = 10;
+
+  // Optional: public scope selector.
+  //   knowledge → company_id_knowledge
+  //   code:{project_id}:{project_name} → project_id_project_name_code
+  string scope = 11;
+
+  // Optional: override LLM completion prompt for graph/RAG completion modes.
+  // Empty string means "use cognee default (Be as brief as possible)".
+  string system_prompt = 12;
+
+  // Optional: override per-retriever top_k (number of top triplets fed into
+  // LLM context). Cognee default = 5; service-side default when zero = 20
+  // (configured in servicer.py). Higher values produce richer answers at
+  // higher LLM-token cost.
+  int32 top_k = 13;
+}
+
+message SearchResult {
+  string id = 1;
+  string text = 2;
+  double score = 3;
+  map<string, string> metadata = 4;
+}
+
+message SearchResponse {
+  bool success = 1;
+  string message = 2;
+  repeated SearchResult results = 3;
+
+  // For FEELING_LUCKY: the actual SearchType cognee selected.
+  // Empty string if not applicable or if cognee does not expose the selection.
+  string actual_search_type = 4;
+
+  // Structured error contract for non-transport failures.
+  // Empty string means success or no classified error.
+  string error_code = 5;
+}
+
+message FlexibleCogneeSearchRequest {
+  string query = 1;
+  SearchType search_type = 2;
+  int32 limit = 3;
+  int32 wide_search_top_k = 4;
+  float triplet_distance_penalty = 5;
+  bool only_context = 6;
+  string dataset_name = 7;
+  string branch = 8;
+  // Optional override for the LLM completion prompt. When empty cognee uses
+  // its default ("Be as brief as possible"). Send a richer prompt to get
+  // longer, structured answers — see api/routes/brain.py for presets.
+  string system_prompt = 9;
+  // Number of top triplets fed into the LLM completion. cognee default is 5;
+  // 20 is a reasonable upper bound that materially improves answer depth.
+  // Zero means "use service-side default".
+  int32 top_k = 10;
+}
+
+message FlexibleCodeSearchRequest {
+  string query = 1;
+  SearchType search_type = 2;
+  int32 limit = 3;
+  int32 wide_search_top_k = 4;
+  float triplet_distance_penalty = 5;
+  bool only_context = 6;
+  string dataset_name = 7;
+  string branch = 8;
+  string project_id = 9;
+  string project_name = 10;
+  // Same semantics as FlexibleCogneeSearchRequest.system_prompt / top_k.
+  string system_prompt = 11;
+  int32 top_k = 12;
+}
+
+message FlexibleCogneeSearchResponse {
+  bool success = 1;
+  string message = 2;
+  repeated SearchResult results = 3;
+  string actual_search_type = 4;
+  string error_code = 5;
+}
+
+message FlexibleCodeSearchResponse {
+  bool success = 1;
+  string message = 2;
+  repeated SearchResult results = 3;
+  string actual_search_type = 4;
+  string error_code = 5;
+}
+
+// ── Prune ────────────────────────────────────────────────────────────────────
+
+message PruneRequest {
+  // Dataset to prune. If empty (with company_id), prunes company-scoped default.
+  string dataset_name = 1;
+
+  // Company ID — required for dataset isolation across tenants
+  string company_id = 2;
+}
+
+message PruneResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── Health ───────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;   // "ok" | "degraded" | "error"
+  string message = 2;
+}

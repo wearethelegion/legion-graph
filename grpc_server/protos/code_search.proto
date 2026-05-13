@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package kgrag.code_search;
+
+// Code Search Service — six atomic primitives + FullSearch composite + Health.
+// 7 unary RPCs only. No LLM dependency on the backend.
+// Agentic search runs in the MCP tool layer (kgrag-mcp/tools/code_search.py).
+//
+// Tenancy: company_id is derived server-side from the JWT. The client MUST NOT
+// supply a company_id — the field was removed in T10.A.
+service CodeSearchService {
+  rpc GetDomains(GetDomainsRequest)           returns (GetDomainsResponse);
+  rpc SearchEntities(SearchEntitiesRequest)   returns (SearchEntitiesResponse);
+  rpc SearchSummaries(SearchSummariesRequest) returns (SearchSummariesResponse);
+  rpc GetCodeForEntity(GetCodeForEntityRequest) returns (GetCodeForEntityResponse);
+  rpc TraverseGraph(TraverseGraphRequest)     returns (TraverseGraphResponse);
+  rpc GetEntityGraph(GetEntityGraphRequest)   returns (GetEntityGraphResponse);
+  rpc FullSearch(FullSearchRequest)           returns (FullSearchResponse);
+  rpc Health(HealthRequest)                   returns (HealthResponse);
+}
+
+// ── Shared sub-messages ───────────────────────────────────────────────────────
+
+message DomainInfo {
+  string name        = 1;
+  string description = 2;
+  string project_id  = 3;
+  int32  entity_count = 4;
+}
+
+message RelatedEntity {
+  string relationship = 1;
+  string name         = 2;
+  string type         = 3;
+}
+
+message EntityResult {
+  string entity_id   = 1;
+  string name        = 2;
+  string entity_type = 3;
+  string description = 4;
+  string project_id  = 5;
+  string branch      = 6;
+  float  score       = 7;
+  repeated RelatedEntity related = 8;
+}
+
+message SummaryResult {
+  string text       = 1;
+  string file_path  = 2;
+  string language   = 3;
+  string project_id = 4;
+  float  score      = 5;
+}
+
+message CodeChunk {
+  string file_path  = 1;
+  string language   = 2;
+  string text       = 3;
+  int32  start_line = 4;
+  int32  end_line   = 5;
+}
+
+message GraphEdge {
+  string source       = 1;
+  string relationship = 2;
+  string target       = 3;
+  string target_type  = 4;
+  string file_path    = 5;
+}
+
+message DomainsBlock {
+  repeated DomainInfo business_domains = 1;
+  repeated DomainInfo technical_tags   = 2;
+}
+
+// ── GetDomains ────────────────────────────────────────────────────────────────
+
+message GetDomainsRequest {
+  reserved 1;                    // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  string project_id        = 2;  // optional
+  bool   include_technical = 3;  // default true (proto default false — servicer overrides)
+}
+
+message GetDomainsResponse {
+  repeated DomainInfo business_domains = 1;
+  repeated DomainInfo technical_tags   = 2;
+  string error_message = 3;
+  string error_code    = 4;
+}
+
+// ── SearchEntities ────────────────────────────────────────────────────────────
+
+message SearchEntitiesRequest {
+  string query       = 1;  // required
+  reserved 2;              // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  string project_id  = 3;  // optional
+  string branch      = 4;  // optional, default "develop"
+  string domain      = 5;  // optional
+  string entity_type = 6;  // optional
+  int32  limit       = 7;  // default 10
+  bool   exclude_tests       = 8;  // default true (servicer override)
+  bool   exclude_domain_meta = 9;  // default true (servicer override)
+}
+
+message SearchEntitiesResponse {
+  repeated EntityResult results = 1;
+  string error_message = 2;
+  string error_code    = 3;
+  string low_confidence_reason = 4;
+}
+
+// ── SearchSummaries ───────────────────────────────────────────────────────────
+
+message SearchSummariesRequest {
+  string query      = 1;  // required
+  reserved 2;             // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  string project_id = 3;  // optional
+  int32  limit      = 4;  // default 10
+  bool   exclude_tests = 5;  // default true (servicer override)
+}
+
+message SearchSummariesResponse {
+  repeated SummaryResult results = 1;
+  string error_message = 2;
+  string error_code    = 3;
+  string low_confidence_reason = 4;
+}
+
+// ── GetCodeForEntity ──────────────────────────────────────────────────────────
+
+message GetCodeForEntityRequest {
+  string entity_name    = 1;  // required
+  reserved 2;                 // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  bool   exclude_tests  = 3;  // default true (servicer override)
+  int32  limit          = 4;  // optional; servicer applies default 10, cap 100
+}
+
+message GetCodeForEntityResponse {
+  repeated CodeChunk results = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── TraverseGraph ─────────────────────────────────────────────────────────────
+
+message TraverseGraphRequest {
+  string entity_name   = 1;  // required
+  reserved 2;                // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  bool   exclude_tests = 3;  // default true (servicer override)
+}
+
+message TraverseGraphResponse {
+  repeated GraphEdge edges = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── GetEntityGraph ────────────────────────────────────────────────────────────
+
+message GetEntityGraphRequest {
+  string entity_name   = 1;  // required
+  reserved 2;                // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  int32  depth         = 3;  // default 2
+  bool   exclude_tests = 4;  // default true (servicer override)
+}
+
+message GetEntityGraphResponse {
+  repeated GraphEdge edges = 1;
+  string error_message = 2;
+  string error_code    = 3;
+}
+
+// ── FullSearch ────────────────────────────────────────────────────────────────
+
+message FullSearchRequest {
+  string query      = 1;  // required
+  reserved 2;             // was company_id — removed T10.A (derived from JWT)
+  reserved "company_id";
+  int32  depth      = 3;  // default 1, range 0-3
+  string project_id = 4;  // optional
+  string domain     = 5;  // optional
+  string entity_type = 6; // optional
+  int32  limit      = 7;  // default 10
+  bool   exclude_tests = 8;  // default true (servicer override)
+}
+
+message FullSearchResponse {
+  DomainsBlock          domains   = 1;  // optional — only when depth >= 0
+  repeated EntityResult  entities  = 2;
+  repeated SummaryResult summaries = 3;
+  repeated CodeChunk     code      = 4;
+  string error_message = 5;
+  string error_code    = 6;
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status  = 1;  // ok | degraded | error
+  string message = 2;
+}

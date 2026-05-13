@@ -1,0 +1,8 @@
+aiokafka==0.13.0
+asyncpg==0.31.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+structlog
+# Used by event_emitter._embed_chunks() to call Gemini embeddings via litellm.aembedding.
+# Pinned to match code_inteligence_preprocessor/requirements.txt for consistency.
+litellm[google]>=1.40.0

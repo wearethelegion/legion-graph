@@ -1,0 +1,38 @@
+# Cognee gRPC Microservice — Python dependencies
+
+# gRPC
+grpcio
+grpcio-health-checking
+
+# Cognee core with Neo4j graph + PostgreSQL relational extras.
+# Pinned to 0.5.5 because cognee_service/cognee_patches.py contains 23 patches
+# written against 0.5.5 internals. Cognee 1.0+ changed function signatures
+# (e.g. brute_force_triplet_search added node_name_filter_operator,
+# feedback_influence, neighborhood_depth, neighborhood_seed_top_k kwargs).
+# DO NOT bump without auditing every patch in cognee_patches.py against the
+# new cognee version's source.
+cognee[neo4j,postgres-binary]==0.5.5
+
+# Pin mistralai <2 — instructor 1.x expects mistralai.Mistral which was removed in v2
+mistralai>=1.0,<2
+
+# Qdrant client (community adapter installed separately in Dockerfile with --ignore-requires-python)
+qdrant-client
+
+# Chonkie — code-aware chunking + Gemini embeddings for SemanticChunker
+chonkie[code,catsu]
+
+# Kafka consumer
+aiokafka
+
+# Async Postgres for stats tracking
+asyncpg
+
+# Auth interceptor
+PyJWT
+httpx
+redis
+
+# Environment and logging
+python-dotenv
+structlog

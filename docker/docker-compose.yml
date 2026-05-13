@@ -1,0 +1,837 @@
+version: "3.8"
+
+# ============================================================
+# kgrag docker-compose — full stack
+#
+# Build ordering: docker-compose cannot express image-dependency order.
+# Use `make build` (or scripts/build.sh) which builds kgrag-base:latest
+# first, then all service images.
+#
+# Quick start:
+#   make up          # build base → build all → up -d
+#   make down        # stop + remove containers
+#   make logs        # tail all logs
+#   make rebuild SVC=kgrag-search  # rebuild one service image
+# ============================================================
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: kgrag-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=500"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-kgrag}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - POSTGRES_DB=kgrag_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kgrag} -d kgrag_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - kgrag-network
+
+  # Creates the `cognee` database idempotently on first boot.
+  # Services that depend on cognee DB wait via:
+  #   depends_on: { postgres-init: { condition: service_completed_successfully } }
+  postgres-init:
+    image: postgres:15-alpine
+    container_name: kgrag-postgres-init
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Waiting for postgres..."
+        until pg_isready -h postgres -U ${POSTGRES_USER:-kgrag} >/dev/null 2>&1; do sleep 1; done
+        echo "Checking for cognee database..."
+        EXISTS=$$(PGPASSWORD="$${POSTGRES_PASSWORD}" psql -h postgres -U ${POSTGRES_USER:-kgrag} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='cognee'")
+        if [ "$$EXISTS" = "1" ]; then
+          echo "cognee database already exists — skipping"
+        else
+          echo "Creating cognee database (owner=${POSTGRES_USER:-kgrag})..."
+          PGPASSWORD="$${POSTGRES_PASSWORD}" psql -h postgres -U ${POSTGRES_USER:-kgrag} -d postgres -c "CREATE DATABASE cognee OWNER ${POSTGRES_USER:-kgrag}"
+          echo "cognee database created"
+        fi
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kgrag-network
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: kgrag-qdrant
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - kgrag-network
+
+  # DozerDB (Neo4j-compatible with multi-database support — graphstack/dozerdb:5.26.3.0)
+  neo4j:
+    image: graphstack/dozerdb:5.26.3.0
+    container_name: kgrag-neo4j
+    ports:
+      - "7474:7474"  # HTTP Browser
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - NEO4J_dbms_memory_pagecache_size=1G
+      - NEO4J_dbms_memory_heap_max__size=2G
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+      - NEO4JLABS_PLUGINS=["apoc"]
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-kgrag_neo4j_password}", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - kgrag-network
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: kgrag-redpanda
+    command:
+      - redpanda start
+      - --smp 2
+      - --memory 2G
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092,EXTERNAL://localhost:19092
+    ports:
+      - "19092:19092"  # Kafka API (external)
+      - "9644:9644"    # Prometheus metrics
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      kgrag-network:
+        aliases:
+          - redpanda
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: kgrag-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-kgrag_redis_password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-kgrag_redis_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - kgrag-network
+
+  # ── Application Services ─────────────────────────────────────
+
+  kgrag-auth:
+    image: kgrag-auth:latest
+    container_name: kgrag-auth
+    ports:
+      - "8001:8001"
+    environment:
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - REDIS_URI=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-30}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-change_this_to_a_secure_random_key}
+      - INFOBIP_API_KEY=${INFOBIP_API_KEY:-}
+      - INFOBIP_BASE_URL=${INFOBIP_BASE_URL:-}
+      - VERIFICATION_FROM_EMAIL=${VERIFICATION_FROM_EMAIL:-noreply@kgrag.ai}
+      # DEV-ONLY: when true, /register auto-activates accounts and skips email verification.
+      - SKIP_EMAIL_VERIFICATION=${SKIP_EMAIL_VERIFICATION:-false}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - kgrag-network
+
+  kgrag-rest-api:
+    image: kgrag-rest-api:latest
+    container_name: kgrag-rest-api
+    ports:
+      - "8000:8000"
+    environment:
+      # PostgreSQL
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      # Redis
+      - REDIS_URI=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      # Auth
+      - AUTH_SERVICE_URL=http://kgrag-auth:8001
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      # Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Neo4j (kgrag REST writes Project/Repository nodes during create_project)
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-kgrag}
+      # Gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_ENABLED=${LLM_ENABLED:-true}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - EMBEDDING_API_KEYS=${EMBEDDING_API_KEYS:-}
+      # gRPC Search Server
+      - GRPC_SERVER_HOST=kgrag-search
+      - GRPC_SERVER_PORT=50051
+      # Cognee gRPC server
+      - COGNEE_SERVICE_URL=kgrag-cognee:50052
+      - COGNEE_JWT_SECRET_KEY=${COGNEE_JWT_SECRET_KEY:-${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}}
+      # Kafka
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kgrag-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kgrag-cognee:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - kgrag-network
+
+  kgrag-search:
+    image: kgrag-search:latest
+    container_name: kgrag-search
+    expose:
+      - "50051"
+    environment:
+      # gRPC Server
+      - GRPC_SERVER_HOST=0.0.0.0
+      - GRPC_SERVER_PORT=50051
+      - GRPC_MAX_WORKERS=${GRPC_MAX_WORKERS:-10}
+      - GRPC_IDEMPOTENCY_CACHE_TTL=${GRPC_IDEMPOTENCY_CACHE_TTL:-3600}
+      - GRPC_ENABLE_HEALTH_CHECK=${GRPC_ENABLE_HEALTH_CHECK:-true}
+      # Auth
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - AUTH_SERVICE_URL=http://kgrag-auth:8001
+      # Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      # Neo4j
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      # PostgreSQL
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      # Redis
+      - REDIS_URI=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      # Gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_ENABLED=${LLM_ENABLED:-true}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - EMBEDDING_API_KEYS=${EMBEDDING_API_KEYS:-}
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kgrag-auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/50051' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - kgrag-network
+
+  kgrag-cognee:
+    image: kgrag-cognee:latest
+    container_name: kgrag-cognee
+    expose:
+      - "50052"
+    environment:
+      # gRPC port
+      - GRPC_PORT=50052
+      # Neo4j
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - COGNEE_NEO4J_DATABASE=${COGNEE_NEO4J_DATABASE:-cognee}
+      # Qdrant (vector DB)
+      - VECTOR_DB_PROVIDER=qdrant
+      - VECTOR_DB_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # Cognee Postgres DB (cognee library internal tables — datasets/data/etc.)
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      # Brain v2 pool — connects to kgrag_auth where BrainContent tables live
+      - KGRAG_DATABASE_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      # Auth JWT secrets
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      - COGNEE_JWT_SECRET_KEY=${COGNEE_JWT_SECRET_KEY:-${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}}
+      # Auth service (for user validation)
+      - AUTH_SERVICE_URL=http://kgrag-auth:8001
+      # Redis — required by the auth interceptor for JWT blacklist + revocation timestamps.
+      # Without this, the interceptor cannot reach Redis (defaults to localhost),
+      # is_blacklisted() throws and fails closed → every token returns 401.
+      - REDIS_URI=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      - TOKEN_BLACKLIST_FAIL_OPEN=${TOKEN_BLACKLIST_FAIL_OPEN:-false}
+      # Kafka (for brain event publishing)
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      # LLM / Embedding (same set as ingestion services)
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      # Cognee 'multi-user access control' is a mode that requires one of cognee's
+      # SaaS-only dataset DB handlers (lancedb / pgvector / kuzu / neo4j_aura_dev).
+      # The self-hosted Neo4j + Qdrant stack only supports the legacy handler, so
+      # access control MUST be disabled — otherwise FlexibleCogneeSearch returns
+      # `Cannot add support for multi-user access control mode`.
+      - ENABLE_BACKEND_ACCESS_CONTROL=${ENABLE_BACKEND_ACCESS_CONTROL:-false}
+      # Misc
+      - TELEMETRY_DISABLED=true
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - cognee_data:/data/cognee
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kgrag-auth:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import grpc; ch=grpc.insecure_channel('localhost:50052'); grpc.channel_ready_future(ch).result(timeout=5); ch.close()"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    networks:
+      - kgrag-network
+
+  # ── V2 Ingestion Pipeline ────────────────────────────────────
+  # All services share kgrag-ingestion:latest; CMD is overridden per service.
+
+  kgrag-entity-extraction:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-entity-extraction
+    command: ["python", "-m", "entity_extraction_service.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - ENTITY_EXTRACTION_MAX_WORKERS=${ENTITY_EXTRACTION_MAX_WORKERS:-30}
+      - CODE_PROCESSING_POSTGRES_DSN=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_API_VERSION=${LLM_API_VERSION:-v1beta}
+      - LLM_INSTRUCTOR_MODE=${LLM_INSTRUCTOR_MODE:-json_mode}
+      - LLM_RATE_LIMIT_ENABLED=${LLM_RATE_LIMIT_ENABLED:-true}
+      - LLM_RATE_LIMIT_REQUESTS=${LLM_RATE_LIMIT_REQUESTS:-1500}
+      - LLM_RATE_LIMIT_INTERVAL=${LLM_RATE_LIMIT_INTERVAL:-60}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_BATCH_MODE=${EMBEDDING_BATCH_MODE:-true}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - VECTOR_DB_PROVIDER=qdrant
+      - VECTOR_DB_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - COGNEE_NEO4J_DATABASE=${COGNEE_NEO4J_DATABASE:-cognee}
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - TELEMETRY_DISABLED=true
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'entity_extraction_service.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  kgrag-summarization:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-summarization
+    command: ["python", "-m", "summarization_service.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - SUMMARIZATION_MAX_WORKERS=${SUMMARIZATION_MAX_WORKERS:-30}
+      - CODE_PROCESSING_POSTGRES_DSN=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_API_VERSION=${LLM_API_VERSION:-v1beta}
+      - LLM_INSTRUCTOR_MODE=${LLM_INSTRUCTOR_MODE:-json_mode}
+      - LLM_RATE_LIMIT_ENABLED=${LLM_RATE_LIMIT_ENABLED:-true}
+      - LLM_RATE_LIMIT_REQUESTS=${LLM_RATE_LIMIT_REQUESTS:-1500}
+      - LLM_RATE_LIMIT_INTERVAL=${LLM_RATE_LIMIT_INTERVAL:-60}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_BATCH_MODE=${EMBEDDING_BATCH_MODE:-true}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - VECTOR_DB_PROVIDER=qdrant
+      - VECTOR_DB_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - COGNEE_NEO4J_DATABASE=${COGNEE_NEO4J_DATABASE:-cognee}
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - TELEMETRY_DISABLED=true
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'summarization_service.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  kgrag-embedding:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-embedding
+    command: ["python", "-m", "embedding_service.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - CODE_PROCESSING_POSTGRES_DSN=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_API_VERSION=${LLM_API_VERSION:-v1beta}
+      - LLM_INSTRUCTOR_MODE=${LLM_INSTRUCTOR_MODE:-json_mode}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_BATCH_MODE=${EMBEDDING_BATCH_MODE:-true}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - VECTOR_DB_PROVIDER=qdrant
+      - VECTOR_DB_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - COGNEE_NEO4J_DATABASE=${COGNEE_NEO4J_DATABASE:-cognee}
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - TELEMETRY_DISABLED=true
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'embedding_service.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  kgrag-qdrant-storage:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-qdrant-storage
+    command: ["python", "-m", "qdrant_storage_service.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - CODE_PROCESSING_POSTGRES_DSN=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - VECTOR_DB_URL=http://qdrant:6333
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'qdrant_storage_service.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  kgrag-neo4j-storage:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-neo4j-storage
+    command: ["python", "-m", "neo4j_storage_service.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - CODE_PROCESSING_POSTGRES_DSN=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - VECTOR_DB_URL=http://qdrant:6333
+      - ENABLE_DOCUMENT_CANONICALISATION=${ENABLE_DOCUMENT_CANONICALISATION:-true}
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      neo4j:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'neo4j_storage_service.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 5
+
+  kgrag-code-preprocessor:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-code-preprocessor
+    command: ["python", "-m", "code_preprocessor.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - PARSER_MAX_WORKERS=${PARSER_MAX_WORKERS:-4}
+      - PARSER_TIMEOUT_SECONDS=${PARSER_TIMEOUT_SECONDS:-60}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-kgrag_redis_password}@redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_COOLDOWN_SECONDS=${GEMINI_COOLDOWN_SECONDS:-60}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=cognee
+      - DB_USERNAME=${POSTGRES_USER:-kgrag}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-kgrag_password}
+      - ENABLE_BACKEND_ACCESS_CONTROL=false
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USERNAME=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-kgrag_neo4j_password}
+      - COGNEE_NEO4J_DATABASE=${COGNEE_NEO4J_DATABASE:-cognee}
+      - VECTOR_DB_PROVIDER=qdrant
+      - VECTOR_DB_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - DATA_ROOT_DIRECTORY=/data/cognee/data
+      - SYSTEM_ROOT_DIRECTORY=/data/cognee/data
+      - TELEMETRY_DISABLED=true
+      - ANALYZER_MODEL_GEMINI=${ANALYZER_MODEL_GEMINI:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - LLM_API_KEY=${GEMINI_API_KEY}
+      - LLM_INSTRUCTOR_MODE=${LLM_INSTRUCTOR_MODE:-json_mode}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - EMBEDDING_BATCH_MODE=${EMBEDDING_BATCH_MODE:-true}
+      - ENRICHED_CHUNKS_TOPIC=${ENRICHED_CHUNKS_TOPIC:-enriched-code-chunks}
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - cognee_data:/data/cognee
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  kgrag-document-preprocessor:
+    image: kgrag-ingestion:latest
+    container_name: kgrag-document-preprocessor
+    command: ["python", "-m", "document_preprocessor.main"]
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+      - KAFKA_INPUT_TOPIC=brain_events
+      - KAFKA_OUTPUT_TOPIC=enriched-code-chunks
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kgrag}:${POSTGRES_PASSWORD:-kgrag_password}@postgres:5432/kgrag_auth
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - LLM_MODEL=${LLM_MODEL:-gemini/gemini-3.1-flash-lite-preview}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_RATE_LIMIT_ENABLED=${LLM_RATE_LIMIT_ENABLED:-true}
+      - LLM_RATE_LIMIT_REQUESTS=${LLM_RATE_LIMIT_REQUESTS:-10000}
+      - LLM_RATE_LIMIT_INTERVAL=${LLM_RATE_LIMIT_INTERVAL:-60}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-gemini/gemini-embedding-001}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS:-3072}
+      - EMBEDDING_CONCURRENCY=${EMBEDDING_CONCURRENCY:-3}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-20}
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - kgrag-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+# ── Volumes ───────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  neo4j_import:
+    driver: local
+  neo4j_plugins:
+    driver: local
+  redpanda_data:
+    driver: local
+  redis_data:
+    driver: local
+  cognee_data:
+    driver: local
+
+# ── Networks ──────────────────────────────────────────────────
+
+networks:
+  kgrag-network:
+    driver: bridge

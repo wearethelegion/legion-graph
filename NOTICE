@@ -1,0 +1,116 @@
+legion-graph
+Copyright 2024-2026 Yaroslav Ubozhenko, Taras Myklush and contributors
+Published by wearethelegion (https://wearethelegion.com).
+
+This product is the Knowledge pillar of the LEGION ecosystem
+(https://wearethelegion.com / https://github.com/wearethelegion) and is
+the only LEGION component released as open-source software. All other
+LEGION components (agents, memory, workflows, web app, cloud, etc.)
+remain proprietary.
+
+Internal codename: kgrag (Knowledge-Graph RAG).
+
+================================================================================
+TRADEMARKS
+================================================================================
+
+LEGION and legion-graph are unregistered trademarks of wearethelegion. The
+Apache License 2.0 under which this software is distributed does not grant
+permission to use these names, except as required to describe the origin
+of the Work and to reproduce the content of this NOTICE file (Apache 2.0
+§4(c), §4(d), §6). Forks and derivative works MUST NOT be distributed
+under the names "LEGION" or "legion-graph" without prior written
+authorization from wearethelegion.
+
+================================================================================
+THIRD-PARTY SOFTWARE — BUNDLED LIBRARIES
+================================================================================
+
+The following Python libraries are installed inside the legion-graph container
+images and are therefore redistributed as part of this product. Each is
+distributed under its own license; consult each project for its full license
+text. The list reflects the principal direct dependencies; the complete
+transitive set is captured in the per-service requirements*.txt files in this
+repository.
+
+  - Cognee (knowledge graph / RAG engine, pinned to v0.5.5)
+      License: Apache License 2.0
+      https://github.com/topoteretes/cognee
+
+  - FastAPI, Starlette                          License: MIT
+  - Uvicorn                                     License: BSD-3-Clause
+  - SQLAlchemy                                  License: MIT
+  - asyncpg, psycopg                            License: Apache 2.0, LGPLv3+OSI
+  - neo4j (Python driver)                       License: Apache 2.0
+  - qdrant-client                               License: Apache 2.0
+  - aiokafka                                    License: Apache 2.0
+  - grpcio, grpcio-tools                        License: Apache 2.0
+  - LiteLLM                                     License: MIT
+  - Pydantic                                    License: MIT
+  - httpx                                       License: BSD-3-Clause
+
+For the complete dependency tree with exact versions, see the per-service
+requirements*.txt files in this repository or generate a full SBOM with
+`pip install pip-licenses && pip-licenses --format=markdown`.
+
+================================================================================
+THIRD-PARTY SOFTWARE — REFERENCED RUNTIME SERVICES
+================================================================================
+
+The following container images are referenced by docker/docker-compose.yml
+and pulled at deployment time as separate runtime processes. They are NOT
+bundled inside the legion-graph distribution; legion-graph communicates with
+them over the network. Their licenses apply to those images independently
+and do not affect the Apache 2.0 license under which legion-graph itself is
+distributed.
+
+  - PostgreSQL                                  Image: postgres:15-alpine
+      License: PostgreSQL License (permissive, BSD-like)
+      https://www.postgresql.org/about/licence/
+
+  - Qdrant                                      Image: qdrant/qdrant:v1.17.0
+      License: Apache License 2.0
+      https://github.com/qdrant/qdrant
+
+  - DozerDB (Neo4j-compatible graph database)   Image: graphstack/dozerdb:5.26.3.0
+      License: GNU General Public License v3.0 (same as Neo4j Community Edition)
+      https://github.com/graphstack/DozerDB
+      NOTE: DozerDB and Neo4j are accessed as separate network services over the
+      Bolt protocol. legion-graph does not link against, embed, statically
+      compile with, or otherwise combine its source code with DozerDB. Under
+      both the GPLv3 "mere aggregation" doctrine and standard interpretation
+      of network-service interaction, this does NOT subject legion-graph to
+      GPLv3 obligations. Operators who modify the DozerDB image itself remain
+      subject to GPLv3 with respect to those modifications.
+
+  - Redpanda                                    Image: redpandadata/redpanda:latest
+      License: Redpanda Business Source License (BSL) 1.1
+      Conversion: BSL terms convert to Apache License 2.0 four (4) years
+      after each release date. See https://github.com/redpanda-data/redpanda
+      for current terms. Production deployments should pin to a specific
+      Redpanda version rather than :latest.
+
+  - Redis                                       Image: redis:7-alpine
+      License: BSD 3-Clause License (Redis 7.0 / 7.2 series, prior to the
+      Redis 7.4 license change to RSALv2/SSPL). Operators upgrading to
+      Redis 7.4 or later MUST independently review the change to RSALv2 /
+      SSPL / AGPLv3 dual-licensing and its implications for their use case.
+      https://github.com/redis/redis
+
+  - Python (base image)                         Image: python:3.13-slim
+      License: PSF License Agreement (permissive)
+      https://docs.python.org/3/license.html
+
+================================================================================
+NOTICE FILE STATUS
+================================================================================
+
+This NOTICE file is informational and is required to be preserved and
+redistributed under Apache License 2.0 §4(d). It does not modify the Apache
+License 2.0 under which legion-graph itself is distributed. See LICENSE for
+the governing terms.
+
+Best-effort accuracy: the licenses listed above were verified at the time of
+publication against the upstream project sources. Operators redistributing
+modified versions of legion-graph remain responsible for verifying the
+license terms of any dependencies they add, remove, or upgrade.

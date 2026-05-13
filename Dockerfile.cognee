@@ -1,0 +1,53 @@
+# ============================================================
+# kgrag-cognee — Cognee gRPC brain/search server image
+# Inherits: kgrag-base:latest
+#
+# Serves: CogneeService, BrainService, BrainContentService on :50052
+#
+# All cognee library patches (cognee_patches.py) are applied in
+# kgrag-base at build time against the installed cognee package.
+# This thin child image inherits those patches automatically.
+#
+# Dependencies resolved via kgrag-base:
+#   - cognee[neo4j,postgres-binary]==0.5.5  (with patches)
+#   - grpcio, grpcio-health-checking, grpcio-reflection
+#   - neo4j, qdrant-client, asyncpg, aiokafka
+#   - structlog, PyJWT, python-dotenv
+#   - chonkie[code,catsu] (for CogneeChunkier)
+#
+# Build with:
+#   docker build -f Dockerfile.cognee -t kgrag-cognee:latest .
+#
+# Requires kgrag-base:latest to be built first.
+# ============================================================
+
+FROM kgrag-base:latest
+
+LABEL description="kgrag Cognee gRPC server (CogneeService, BrainService, BrainContentService)"
+
+# ── No extra pip install needed ───────────────────────────────
+# All runtime deps are in kgrag-base (cognee, grpcio, neo4j,
+# qdrant-client, aiokafka, asyncpg, structlog, PyJWT, chonkie, etc.)
+
+# ── Copy cognee_service source ────────────────────────────────
+# COPY graph_services/cognee_service/ → /app/cognee_service/
+# This places the package at the Python import root so that:
+#   import cognee_service.server
+#   from cognee_service.cognee_patches import ...
+# all resolve correctly with PYTHONPATH=/app (set in kgrag-base).
+COPY graph_services/cognee_service/ /app/cognee_service/
+
+# ── Copy shared modules needed by cognee_service ─────────────
+# cognee_service.brain_content.servicer → shared.kafka_schemas
+# cognee_service.brain.kafka_producer  → shared.kafka_schemas
+COPY shared/ /app/shared/
+
+# ── Expose gRPC port ──────────────────────────────────────────
+EXPOSE 50052
+
+# ── Healthcheck — wait for the gRPC port to accept connections ─
+HEALTHCHECK --interval=15s --timeout=10s --start-period=60s --retries=5 \
+    CMD python -c "import grpc; ch=grpc.insecure_channel('localhost:50052'); grpc.channel_ready_future(ch).result(timeout=5); ch.close()" || exit 1
+
+# ── Runtime command ───────────────────────────────────────────
+CMD ["python", "-m", "cognee_service.server"]

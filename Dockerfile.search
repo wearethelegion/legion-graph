@@ -1,0 +1,51 @@
+# ============================================================
+# kgrag-search — gRPC search server image
+# Inherits: kgrag-base:latest
+#
+# Serves: AuthService, CodeService, CodeSearchService,
+#         DocumentSearchService, IngestionService on :50051
+#
+# Proto stubs decision: OPTION (B) — use pre-built stubs.
+# Phase 2 already regenerated and patched all *_pb2.py files
+# under grpc_server/protos/. They are committed to the repo and
+# copied directly here. This avoids a grpcio-tools install at
+# build time (faster incremental rebuilds).
+# Rationale: stubs change only when .proto files change, which
+# is infrequent. scripts/generate_protos.sh + patch_protobuf_version.py
+# remain available to regenerate on demand.
+#
+# Build with:
+#   docker build -f Dockerfile.search -t kgrag-search:latest .
+#
+# Requires kgrag-base:latest to be built first.
+# ============================================================
+
+FROM kgrag-base:latest
+
+LABEL description="kgrag gRPC search server (AuthService, CodeService, CodeSearchService, DocumentSearchService, IngestionService)"
+
+# ── No extra pip install needed ───────────────────────────────
+# All runtime deps (grpcio, grpcio-reflection, grpcio-health-checking,
+# prometheus-client, etc.) are already in kgrag-base.
+
+# ── Copy gRPC server source ───────────────────────────────────
+COPY grpc_server/ /app/grpc_server/
+
+# ── Copy API modules transitively needed by search servicers ─
+# code_search_servicer → api/database, api/repositories, api/services/code_search/
+# document_search_servicer → api/database, api/repositories, api/services/document_search/
+# code_servicer → api/services/code_service.py, api/services/code_query_service.py,
+#                 api/services/code_search_service.py
+# ingestion_servicer → api/services/...
+# auth_servicer → api/auth.py
+COPY api/ /app/api/
+
+# ── Expose gRPC port ──────────────────────────────────────────
+EXPOSE 50051
+
+# ── Healthcheck (TCP port open check) ────────────────────────
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+    CMD timeout 1 bash -c '</dev/tcp/localhost/50051' || exit 1
+
+# ── Runtime command ───────────────────────────────────────────
+CMD ["python", "-m", "grpc_server.server"]

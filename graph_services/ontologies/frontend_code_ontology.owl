@@ -1,0 +1,615 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+    xmlns:owl="http://www.w3.org/2002/07/owl#"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+    xmlns:fe="http://kgrag.ai/ontology/frontend#">
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       Frontend Code Ontology (React + Ionic + Capacitor)
+       Version: 1.0
+       Purpose: Guide Cognee entity extraction for React/Ionic/Capacitor
+                frontend codebases written in TypeScript/JavaScript.
+       Usage:   Set ONTOLOGY_FILE_PATH to this file path in .env
+                or pass ontology_file_path=<path> to cognify().
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Ontology rdf:about="http://kgrag.ai/ontology/frontend">
+    <rdfs:comment>OWL ontology for React + Ionic + Capacitor frontend code
+    entity extraction. Defines classes for React component patterns,
+    state management, routing, Ionic UI components, Capacitor native
+    plugins, and TypeScript type system constructs.
+    Used by Cognee to validate and canonicalize extracted entities.</rdfs:comment>
+  </owl:Ontology>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TOP-LEVEL ABSTRACT CLASSES
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#CodeEntity">
+    <rdfs:comment>Root class for all code entities in a frontend application.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#TypeScriptConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>TypeScript/JavaScript language constructs (types, interfaces, enums).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#ReactConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>React framework constructs (components, hooks, context).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#StateManagement">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>State management entities (stores, reducers, actions, selectors).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#RoutingEntity">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Routing and navigation entities.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#IonicConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Ionic Framework UI constructs.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#CapacitorConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Capacitor native bridge and plugin constructs.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#SharedConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>General-purpose shared code entities (services, utilities, helpers).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TYPESCRIPT / JAVASCRIPT LANGUAGE CONSTRUCTS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Type">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A TypeScript type alias (type UserRole = 'admin' | 'user').</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Interface">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A TypeScript interface definition.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Enum">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A TypeScript enum declaration.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Class">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A TypeScript/JavaScript class definition.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Function">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A standalone function (not a method on a class).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Constant">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>An exported constant value (const API_URL = '...').</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Module">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>An ES module (file exporting functions, types, components).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#GenericType">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#TypeScriptConstruct"/>
+    <rdfs:comment>A generic/parameterized type (ApiResponse&lt;T&gt;).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REACT COMPONENTS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Component">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React component (functional or class-based).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#FunctionalComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A React functional component (const MyComp: React.FC = ...).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#ClassComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A React class component extending React.Component or PureComponent.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#HigherOrderComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A higher-order component (HOC) wrapping another component.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#PureComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A memoized or pure component (React.memo, PureComponent).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REACT HOOKS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Hook">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React hook (built-in or custom).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#CustomHook">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Hook"/>
+    <rdfs:comment>A custom React hook (function starting with 'use').</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REACT CONTEXT
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Context">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React.createContext context object.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Provider">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React context provider component wrapping children.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Consumer">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React context consumer (useContext or Context.Consumer).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REACT MISCELLANEOUS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#ErrorBoundary">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>An error boundary component (componentDidCatch).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Suspense">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A React.Suspense wrapper for lazy loading.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#LazyComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>A lazily-loaded component (React.lazy).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Ref">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#ReactConstruct"/>
+    <rdfs:comment>A React ref (useRef, forwardRef, createRef).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       STATE MANAGEMENT
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Store">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A state store (Redux store, Zustand store, MobX store, NgRx store).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Reducer">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A reducer function (Redux reducer, useReducer).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Action">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A dispatched action (Redux action, createAction, createAsyncThunk).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Selector">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A state selector (createSelector, useSelector, computed values).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Effect">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A side effect handler (Redux-Saga, Redux-Thunk, createEffect).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#State">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A state shape or state slice definition.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Slice">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>A Redux Toolkit slice (createSlice) combining reducer + actions.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Middleware">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#StateManagement"/>
+    <rdfs:comment>State management middleware (Redux middleware, interceptors).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       ROUTING & NAVIGATION
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Page">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#RoutingEntity"/>
+    <rdfs:comment>A page-level component mapped to a route (e.g., /dashboard, /profile).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Route">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#RoutingEntity"/>
+    <rdfs:comment>A route configuration entry mapping a URL path to a component.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Guard">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#RoutingEntity"/>
+    <rdfs:comment>A route guard protecting routes (auth guard, role guard).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#NavigationController">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#RoutingEntity"/>
+    <rdfs:comment>Ionic IonRouterOutlet or navigation controller managing page stack.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Router">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#RoutingEntity"/>
+    <rdfs:comment>Router configuration (BrowserRouter, IonReactRouter, createBrowserRouter).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       IONIC FRAMEWORK
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#IonComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>An Ionic UI component (IonButton, IonCard, IonList, IonInput, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Modal">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic modal dialog (IonModal, useIonModal).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Sheet">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic bottom sheet (IonModal with breakpoints).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Toast">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic toast notification (IonToast, useIonToast).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Alert">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic alert dialog (IonAlert, useIonAlert).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#ActionSheet">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic action sheet (IonActionSheet, useIonActionSheet).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Popover">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic popover (IonPopover, useIonPopover).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Menu">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic side menu (IonMenu, IonSplitPane).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Tabs">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#IonicConstruct"/>
+    <rdfs:comment>Ionic tab navigation (IonTabs, IonTabBar, IonTabButton).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       CAPACITOR — NATIVE BRIDGE
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Plugin">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CapacitorConstruct"/>
+    <rdfs:comment>A Capacitor plugin providing native functionality (Camera, Filesystem, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#NativePlugin">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Plugin"/>
+    <rdfs:comment>A native (iOS/Android) Capacitor plugin implementation.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#WebPlugin">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Plugin"/>
+    <rdfs:comment>A web fallback implementation for a Capacitor plugin.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#NativeBridge">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CapacitorConstruct"/>
+    <rdfs:comment>The Capacitor native bridge layer bridging JS and native code.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Permission">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CapacitorConstruct"/>
+    <rdfs:comment>A native permission request (camera, location, notifications, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#PluginConfig">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#CapacitorConstruct"/>
+    <rdfs:comment>Capacitor plugin configuration (capacitor.config.ts).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       GENERAL / SHARED CONSTRUCTS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Service">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A service class/module encapsulating API calls or business logic.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#APIClient">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#Service"/>
+    <rdfs:comment>HTTP API client (Axios instance, fetch wrapper, API service).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Utility">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A utility function or utility module (date formatting, validation, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Helper">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A helper function or helper module.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Config">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>Configuration object or environment config (env vars, feature flags).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#EventHandler">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>An event handler function (onClick, onSubmit, onChange).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Validator">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A form/data validator (Yup schema, Zod schema, custom validation).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Interceptor">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>An HTTP interceptor (Axios interceptor, fetch middleware).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TESTING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#TestSuite">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A test suite (describe block in Jest/Vitest/Cypress).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#TestCase">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>An individual test case (it/test block).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Mock">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A test mock/stub/spy (jest.mock, vi.mock).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Fixture">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>Test fixture data used in test setups.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       STYLING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#StyleSheet">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>CSS/SCSS module or styled-components theme.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/frontend#Theme">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/frontend#SharedConstruct"/>
+    <rdfs:comment>A theming configuration (CSS variables, Ionic theme, styled-components theme).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — COMPONENT RELATIONSHIPS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#renders">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>Parent component renders child component in its JSX.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#wraps">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:comment>HOC or wrapper component wraps another component.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#uses_hook">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Hook"/>
+    <rdfs:comment>Component uses a React hook.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#provides_context">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Provider"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Context"/>
+    <rdfs:comment>Provider component provides a context value.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#consumes_context">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Context"/>
+    <rdfs:comment>Component consumes a context (useContext).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — STATE MANAGEMENT
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#dispatches">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Action"/>
+    <rdfs:comment>Component dispatches a state action.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#selects_from">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Store"/>
+    <rdfs:comment>Component reads state from a store via selector.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#handles">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Reducer"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Action"/>
+    <rdfs:comment>Reducer handles an action type.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#triggers_effect">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Action"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Effect"/>
+    <rdfs:comment>Action triggers a side effect.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#derives_from">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Selector"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#State"/>
+    <rdfs:comment>Selector derives computed data from state.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — ROUTING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#maps_to_page">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Route"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Page"/>
+    <rdfs:comment>Route maps a URL path to a page component.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#protected_by">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Route"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Guard"/>
+    <rdfs:comment>Route is protected by a guard.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#navigates_to">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Page"/>
+    <rdfs:comment>Component navigates to a page (useHistory, useNavigate, router.push).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — STRUCTURAL
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#imports">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>ES module import statement.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#exports">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Module"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Module exports an entity (named or default export).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#extends">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Class"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Class"/>
+    <rdfs:comment>Class extends another class (inheritance).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#implements">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Class"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Interface"/>
+    <rdfs:comment>Class implements a TypeScript interface.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#calls_api">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Service"/>
+    <rdfs:comment>Code calls an API service or API client method.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — CAPACITOR
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#uses_plugin">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Plugin"/>
+    <rdfs:comment>Code uses a Capacitor plugin for native functionality.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#requires_permission">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Plugin"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Permission"/>
+    <rdfs:comment>Plugin requires a native permission.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#bridges_to_native">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Plugin"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#NativeBridge"/>
+    <rdfs:comment>Plugin communicates through the native bridge.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — TESTING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#tests">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#TestSuite"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Test suite tests a code entity.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#mocks">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Mock"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#CodeEntity"/>
+    <rdfs:comment>Mock replaces a real code entity in tests.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — STYLING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#styled_by">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#StyleSheet"/>
+    <rdfs:comment>Component is styled by a stylesheet.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/frontend#themed_by">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/frontend#Component"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/frontend#Theme"/>
+    <rdfs:comment>Component uses a theme for styling.</rdfs:comment>
+  </owl:ObjectProperty>
+
+</rdf:RDF>

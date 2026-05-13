@@ -1,0 +1,39 @@
+# ============================================================
+# kgrag-auth — Auth microservice image
+# Inherits: kgrag-base:latest
+#
+# Serves the Auth REST API on :8001
+# Manages users, roles, JWT tokens, OAuth2, 2FA, API tokens.
+#
+# Build with:
+#   docker build -f Dockerfile.auth -t kgrag-auth:latest .
+#
+# Requires kgrag-base:latest to be built first.
+# ============================================================
+
+FROM kgrag-base:latest
+
+LABEL description="kgrag auth microservice (JWT, OAuth2, 2FA)"
+
+# ── Install auth-specific extras ─────────────────────────────
+COPY requirements-auth.txt .
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver \
+        -r requirements-auth.txt
+
+# ── Create non-root user ──────────────────────────────────────
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
+# ── Copy auth service source ──────────────────────────────────
+COPY --chown=appuser:appuser auth/ /app/auth/
+
+# ── Expose auth port ──────────────────────────────────────────
+EXPOSE 8001
+
+# ── Healthcheck ───────────────────────────────────────────────
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+USER appuser
+
+# ── Runtime command ───────────────────────────────────────────
+CMD ["uvicorn", "auth.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

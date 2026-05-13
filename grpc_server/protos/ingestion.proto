@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package kgrag.ingestion;
+
+// Ingestion Service for querying code ingestion status and progress.
+// Reads from MongoDB ingestions collection populated by the preprocessor.
+service IngestionService {
+  // Get status and progress of a specific ingestion
+  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
+
+  // List ingestions for a project with optional filters
+  rpc ListIngestions(ListIngestionsRequest) returns (ListIngestionsResponse);
+}
+
+// Get Ingestion Status
+message GetIngestionStatusRequest {
+  string user_token = 1;
+  string ingestion_id = 2;
+}
+
+message GetIngestionStatusResponse {
+  string status = 1;            // success or error
+  string ingestion_id = 2;
+  string ingestion_status = 3;  // pending, running, completed, failed
+  string repository = 4;
+  string branch = 5;
+  int32 total_files = 6;
+  int32 files_processed = 7;
+  int32 files_failed = 8;
+  int32 files_skipped = 9;
+  string current_file = 10;
+  repeated FailedFile failed_files = 11;
+  string started_at = 12;
+  string completed_at = 13;
+  float percentage = 14;
+  string error_message = 15;
+  string error_code = 16;
+}
+
+message FailedFile {
+  string file_path = 1;
+  string error = 2;
+  string timestamp = 3;
+}
+
+// List Ingestions
+message ListIngestionsRequest {
+  string user_token = 1;
+  string project_id = 2;        // Required filter by project
+  string status_filter = 3;     // Optional filter by status
+  int32 limit = 4;              // Default 20
+  int32 offset = 5;             // Pagination offset
+}
+
+message ListIngestionsResponse {
+  string status = 1;            // success or error
+  repeated IngestionSummary ingestions = 2;
+  int32 total_count = 3;
+  string error_message = 4;
+  string error_code = 5;
+}
+
+message IngestionSummary {
+  string ingestion_id = 1;
+  string repository = 2;
+  string branch = 3;
+  string ingestion_status = 4;
+  int32 total_files = 5;
+  int32 files_processed = 6;
+  string started_at = 7;
+  float percentage = 8;
+}

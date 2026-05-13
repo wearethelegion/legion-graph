@@ -1,0 +1,21 @@
+aiokafka==0.13.0
+asyncpg==0.31.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+gitpython==3.1.46
+tree-sitter-language-pack==0.7.1
+litellm[google]>=1.40.0
+
+# Kafka snappy codec support for aiokafka
+cramjam>=2.8.0
+
+# Cognee SDK — for cognee.add() metadata registration
+cognee[neo4j,postgres-binary]==0.5.5
+
+# Qdrant client (adapter installed separately in Dockerfile with --no-deps)
+qdrant-client
+
+# Required by cognee_service/multi_tenancy.py
+structlog
+neo4j
+python-dotenv

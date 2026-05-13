@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package kgrag.cognee_code;
+
+// Cognee Code Service
+// Standalone gRPC microservice for GitHub repository code ingestion
+// into the shared Cognee knowledge graph (Neo4j + Qdrant + PostgreSQL).
+// Ingestion only — search stays in the existing CogneeService.
+service CogneeCodeService {
+  // Clone a GitHub repo and run full code graph pipeline ingestion.
+  // Server-streaming: yields progress updates during long-running operation.
+  rpc IngestRepo(IngestRepoRequest) returns (stream IngestionProgress);
+
+  // Pull latest changes and incrementally re-ingest only changed files (git diff).
+  // Server-streaming: yields progress updates.
+  rpc UpdateRepo(UpdateRepoRequest) returns (stream IngestionProgress);
+
+  // Remove a tracked repo (deletes local clone, cleans up repo's graph entities
+  // from the shared company dataset).
+  rpc RemoveRepo(RemoveRepoRequest) returns (RemoveRepoResponse);
+
+  // List tracked repos with status and metadata.
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+
+  // Get status of a specific repo's last ingestion.
+  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
+
+  // Health check.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ── IngestRepo ──────────────────────────────────────────────────────────────
+
+message IngestRepoRequest {
+  string repo_url = 1;           // GitHub HTTPS URL (e.g. https://github.com/org/repo)
+  string github_username = 2;    // GitHub username for authentication
+  string github_token = 3;       // GitHub PAT (never stored)
+  string company_id = 4;         // Tenant isolation — REQUIRED. Also used as dataset_name.
+  string branch = 5;             // Branch to clone (default: main)
+}
+
+// ── UpdateRepo ──────────────────────────────────────────────────────────────
+
+message UpdateRepoRequest {
+  string repo_url = 1;           // Must match a previously ingested repo
+  string github_username = 2;
+  string github_token = 3;
+  string company_id = 4;         // REQUIRED
+}
+
+// ── Shared Progress ─────────────────────────────────────────────────────────
+
+enum IngestionStage {
+  STAGE_UNKNOWN = 0;
+  CLONING = 1;
+  PULLING = 2;
+  ANALYZING = 3;
+  INGESTING = 4;
+  COMPLETE = 5;
+  FAILED = 6;
+}
+
+message IngestionProgress {
+  IngestionStage stage = 1;
+  string message = 2;            // Human-readable status message
+  int32 progress_pct = 3;        // 0-100
+  int32 files_processed = 4;
+  int32 total_files = 5;
+  string commit_sha = 6;         // Set on COMPLETE
+  string error = 7;              // Set on FAILED
+}
+
+// ── RemoveRepo ──────────────────────────────────────────────────────────────
+
+message RemoveRepoRequest {
+  string repo_url = 1;
+  string company_id = 2;         // REQUIRED
+}
+
+message RemoveRepoResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ── ListRepos ───────────────────────────────────────────────────────────────
+
+message ListReposRequest {
+  string company_id = 1;         // REQUIRED — filter by company
+}
+
+message RepoInfo {
+  string repo_url = 1;
+  string branch = 2;
+  string last_commit_sha = 3;
+  string status = 4;             // pending | ingesting | ready | failed | removed
+  int32 files_count = 5;
+  string last_ingested_at = 6;   // ISO 8601 timestamp
+  string error_message = 7;      // Set if status == failed
+}
+
+message ListReposResponse {
+  bool success = 1;
+  repeated RepoInfo repos = 2;
+}
+
+// ── GetIngestionStatus ──────────────────────────────────────────────────────
+
+message GetIngestionStatusRequest {
+  string repo_url = 1;
+  string company_id = 2;         // REQUIRED
+}
+
+message GetIngestionStatusResponse {
+  bool success = 1;
+  RepoInfo repo = 2;
+}
+
+// ── Health ──────────────────────────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;             // ok | degraded | error
+  string message = 2;
+}

@@ -1,0 +1,116 @@
+# ============================================================
+# kgrag-base shared requirements
+# Installed in Dockerfile.base; inherited by ALL child images:
+#   kgrag-ingestion, kgrag-search, kgrag-auth, kgrag-rest-api
+#
+# Rules:
+#   - Include a package HERE if it is used by 2+ images.
+#   - Image-specific packages go in requirements-<image>.txt
+#   - Versions match existing pins from requirements.txt /
+#     requirements-grpc.txt / graph_services/requirements-v2pipeline.txt /
+#     graph_services/requirements-cognee.txt
+# ============================================================
+
+# ── gRPC (search image + cognee_service in base) ─────────────
+# Pinned <1.72.0 to stay compatible with protobuf==5.29.3
+# (google-ai-generativelanguage==0.6.15 requires protobuf<6.0dev)
+grpcio>=1.60.0,<1.72.0
+grpcio-reflection>=1.60.0,<1.72.0
+grpcio-health-checking>=1.60.0,<1.72.0
+# grpcio-status is a transitive dep of google-api-core; pin to keep protobuf<6 compat
+grpcio-status>=1.60.0,<1.72.0
+
+# ── Protobuf (ALL images import *_pb2) ───────────────────────
+protobuf==5.29.3
+proto-plus==1.26.1
+
+# ── Cognee (ingestion image + base cognee_service) ───────────
+# MUST match version used in Dockerfile.v2pipeline and Dockerfile.cognee.
+# DO NOT bump without auditing cognee_patches.py (23 patches written against 0.5.5 internals).
+cognee[neo4j,postgres-binary]==0.5.5
+# cognee-community-vector-adapter-qdrant installed with --no-deps in Dockerfile.base
+# (prevents stale cognee version pull) — not listed here but handled in Dockerfile
+
+# ── mistralai: instructor 1.x compat ─────────────────────────
+# Pin mistralai <2: instructor 1.x expects mistralai.Mistral which was removed in v2
+mistralai>=1.0,<2
+
+# ── Vector / Graph DBs ───────────────────────────────────────
+qdrant-client>=1.7.0
+neo4j>=5.15.0
+
+# ── Google AI (ALL images, via kgrag.embeddings + cognee) ────
+google-generativeai==0.8.5
+google-genai>=1.28.0
+google-ai-generativelanguage==0.6.15
+# Vertex AI embeddings (ingestion embedding_service + kgrag.embeddings)
+google-cloud-aiplatform
+
+# ── Kafka / async messaging (ingestion + search) ─────────────
+aiokafka>=0.10.0
+
+# ── Database / async I/O ─────────────────────────────────────
+asyncpg>=0.29.0
+sqlalchemy>=2.0.0
+redis>=5.0.0
+httpx>=0.25.0
+
+# ── Data / serialisation ─────────────────────────────────────
+pydantic[email]>=2.0.0
+orjson==3.10.18
+
+# ── Logging ──────────────────────────────────────────────────
+loguru>=0.7.0
+structlog
+
+# ── Environment / configuration ──────────────────────────────
+python-dotenv>=1.0.0
+
+# ── Observability (search image exposes Prometheus) ──────────
+prometheus-client>=0.20.0
+
+# ── Async utilities ──────────────────────────────────────────
+aiofiles>=23.2.1
+aiolimiter>=1.2.1
+
+# ── Chunking (cognee_service.chonkie_chunker used in base) ───
+# chonkie[semantic,gemini] from requirements.txt is rest-api only.
+# chonkie[code,catsu] is the variant used by cognee_service.
+# The [code,catsu] extras are a subset; base uses catsu+code only.
+chonkie[code,catsu]
+
+# ── HTTP / JWT (auth + rest-api + search auth interceptor) ───
+PyJWT
+python-jose[cryptography]>=3.3.0
+cryptography>=41.0.0
+passlib[bcrypt]==1.7.4
+bcrypt>=4.1.2,<5.0.0
+
+# ── Embed (shared kgrag.embeddings + code search) ────────────
+fastembed==0.6.0
+# Pillow is a fastembed transitive dep; pin for cp313 wheel compat
+Pillow>=10.4.0,<12.0.0
+tiktoken>=0.5.0
+
+# ── Scheduling (code_preprocessor + ingestion workers) ───────
+apscheduler>=3.10.0
+
+# ── Document extraction (rest-api + kgrag.document_extraction) 
+pypdf>=4.0.0
+python-docx>=1.1.0
+python-pptx>=0.6.21
+
+# ── psycopg2 (auth + rest-api + alembic) ─────────────────────
+psycopg2-binary>=2.9.10
+
+# ── MongoDB (api/consumers) ──────────────────────────────────
+pymongo>=4.6.0
+
+# ── MCP / key-value store (kgrag.config → secrets) ───────────
+mcp==1.21.1
+py-key-value-aio[disk,memory]==0.2.8
+py-key-value-shared==0.2.8
+
+# ── Transitive pins (prevent resolver backtracking) ──────────
+# fastembed<=0.6.0 requires pillow<12.0.0
+# See full rationale in original requirements.txt comments

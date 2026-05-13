@@ -1,0 +1,72 @@
+# LightRAG Configuration File
+# This file provides default settings for the LightRAG service
+
+# Server Settings
+server:
+  host: "0.0.0.0"
+  port: 9621
+  workers: 2
+  log_level: "INFO"
+
+# Document Processing
+document_processing:
+  enable_llm_cache: true
+  summary_language: "English"
+  max_parallel_insert: 2
+  chunk_token_size: 1200
+  chunk_overlap_token_size: 100
+
+# Performance Settings
+performance:
+  max_async: 4
+  max_tokens: 32768
+  timeout: 200
+  temperature: 0.1
+
+# Storage Settings
+storage:
+  working_dir: "/app/data/rag_storage"
+  input_dir: "/app/data/inputs"
+  
+# Model Configuration  
+models:
+  # LLM (Large Language Model) - Gemini 2.0 Flash
+  llm:
+    binding: "openai"
+    model: "gemini-2.0-flash"
+    host: "https://generativelanguage.googleapis.com/v1beta/openai"
+    # api_key: set via GEMINI_API_KEY environment variable
+    
+  # Embedding Model - Gemini (using text-embedding-004)
+  embedding:
+    binding: "openai"
+    model: "text-embedding-004"
+    host: "https://generativelanguage.googleapis.com/v1beta/openai"
+    # api_key: set via GEMINI_API_KEY environment variable
+    
+  # Reranker Model - Jina Reranker v2 ONLY
+  reranker:
+    binding: "jina"
+    model: "jina-reranker-v2-base-multilingual"
+    host: "https://api.jina.ai/v1"
+    # api_key: set via JINA_API_KEY environment variable
+
+# Database Configuration
+databases:
+  # Knowledge Graph Storage
+  neo4j:
+    uri: "bolt://neo4j:7687"
+    username: "neo4j"
+    password: "lightrag_password"
+    database: "lightrag"
+    
+  # Vector Storage  
+  qdrant:
+    uri: "http://qdrant:6333"
+    collection_name: "lightrag_vectors"
+    
+  # High-Performance Cache Storage
+  redis:
+    uri: "redis://:lightrag_cache_password@redis:6379"
+    workspace: "lightrag_scaled"
+    max_connections: 200

@@ -1,0 +1,521 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+    xmlns:owl="http://www.w3.org/2002/07/owl#"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+    xmlns:rails="http://kgrag.ai/ontology/rails#">
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       Ruby on Rails Code Ontology
+       Version: 1.0
+       Purpose: Guide Cognee entity extraction for Rails codebases.
+       Usage:   Set ONTOLOGY_FILE_PATH to this file path in .env
+                or pass ontology_file_path=<path> to cognify().
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Ontology rdf:about="http://kgrag.ai/ontology/rails">
+    <rdfs:comment>OWL ontology for Ruby on Rails code entity extraction.
+    Defines classes for Rails architectural patterns (MVC, ActiveRecord,
+    Action Cable, Active Job, etc.) and relationships between them.
+    Used by Cognee to validate and canonicalize extracted entities.</rdfs:comment>
+  </owl:Ontology>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TOP-LEVEL ABSTRACT CLASSES
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#CodeEntity">
+    <rdfs:comment>Root class for all code entities in a Rails application.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#RubyConstruct">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>Pure Ruby language constructs (class, module, method).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#RailsComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>Rails framework components following convention-over-configuration.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#DatabaseEntity">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>Database schema elements managed by ActiveRecord.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#APIEntity">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>HTTP API layer entities (endpoints, parameters, responses).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       RUBY LANGUAGE CONSTRUCTS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Class">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RubyConstruct"/>
+    <rdfs:comment>A Ruby class definition.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Module">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RubyConstruct"/>
+    <rdfs:comment>A Ruby module used for namespacing or mixins.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Method">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RubyConstruct"/>
+    <rdfs:comment>A Ruby method (instance or class method).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Gem">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RubyConstruct"/>
+    <rdfs:comment>A Ruby gem dependency declared in Gemfile.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MVC — MODELS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Model">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActiveRecord model inheriting from ApplicationRecord.
+    Represents a database-backed domain object with validations,
+    associations, scopes, and callbacks.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Concern">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActiveSupport::Concern module mixed into models or controllers
+    to share reusable behavior.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Validator">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Custom validator class (ActiveModel::Validator or EachValidator).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Scope">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Named scope on a model (scope :active, -> { where(active: true) }).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Callback">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActiveRecord/ActionController lifecycle callback
+    (before_action, after_create, before_save, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Enum">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActiveRecord enum declaration mapping symbols to integer values.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MVC — CONTROLLERS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Controller">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActionController class handling HTTP requests for a resource.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Action">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>A controller action method (index, show, create, update, destroy, or custom).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MVC — VIEWS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#View">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>An ERB/Haml/Slim view template.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Partial">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#View"/>
+    <rdfs:comment>A reusable view partial (prefixed with underscore).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Layout">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#View"/>
+    <rdfs:comment>An application layout template wrapping views.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Helper">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>View helper module providing utility methods for templates.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#ViewComponent">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#View"/>
+    <rdfs:comment>A ViewComponent class encapsulating view logic and templates.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SERIALIZATION
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Serializer">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>JSON serializer (ActiveModelSerializers, Blueprinter, JSONAPI::Serializer, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       SERVICE LAYER & PATTERNS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Service">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Service object encapsulating business logic outside models/controllers.
+    Typically in app/services/.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Interactor">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#Service"/>
+    <rdfs:comment>Interactor pattern object (single responsibility business operation).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Policy">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Authorization policy (Pundit Policy class).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Decorator">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Decorator/presenter wrapping a model for display logic (Draper).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#FormObject">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Form object encapsulating multi-model form logic.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Query">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Query object encapsulating complex database queries.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       BACKGROUND PROCESSING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Job">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActiveJob background job class (Sidekiq, Resque, DelayedJob, etc.).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MAILERS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Mailer">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActionMailer class for sending transactional emails.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       CHANNELS (ACTION CABLE)
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Channel">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>ActionCable channel for WebSocket communication.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       ROUTING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Route">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>A route definition mapping URL patterns to controller actions.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Namespace">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#Route"/>
+    <rdfs:comment>A route namespace grouping related routes (namespace :api do ... end).</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MIDDLEWARE & CONFIGURATION
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Middleware">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Rack middleware in the request/response pipeline.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Initializer">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Rails initializer file in config/initializers/.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Configuration">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>Application configuration setting or environment-specific config.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       MIGRATIONS & DATABASE SCHEMA
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Migration">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#DatabaseEntity"/>
+    <rdfs:comment>ActiveRecord migration modifying the database schema.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Table">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#DatabaseEntity"/>
+    <rdfs:comment>A database table corresponding to an ActiveRecord model.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Column">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#DatabaseEntity"/>
+    <rdfs:comment>A database column/attribute on a table.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Index">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#DatabaseEntity"/>
+    <rdfs:comment>A database index on one or more columns.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#ForeignKey">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#DatabaseEntity"/>
+    <rdfs:comment>A database foreign key constraint.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       API ENTITIES
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Endpoint">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#APIEntity"/>
+    <rdfs:comment>An HTTP API endpoint (GET /api/v1/users).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Parameter">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#APIEntity"/>
+    <rdfs:comment>An API request parameter (query, path, or body parameter).</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Response">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#APIEntity"/>
+    <rdfs:comment>An API response format or status code.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       TESTING
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#TestCase">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>An RSpec describe/context block or Minitest::Test class.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="http://kgrag.ai/ontology/rails#Factory">
+    <rdfs:subClassOf rdf:resource="http://kgrag.ai/ontology/rails#RailsComponent"/>
+    <rdfs:comment>A FactoryBot factory definition for test data.</rdfs:comment>
+  </owl:Class>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — ASSOCIATIONS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_many">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord has_many association (one-to-many).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#belongs_to">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord belongs_to association (many-to-one foreign key).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_one">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord has_one association (one-to-one).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_and_belongs_to_many">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord HABTM association (many-to-many via join table).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_many_through">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord has_many :through association (many-to-many via join model).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_one_through">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>ActiveRecord has_one :through association.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#polymorphic">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>Polymorphic association (belongs_to :commentable, polymorphic: true).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — STRUCTURAL RELATIONSHIPS
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#inherits_from">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>Ruby class inheritance (class User &lt; ApplicationRecord).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#includes">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Concern"/>
+    <rdfs:comment>Module inclusion (include Searchable).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#extends">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Module"/>
+    <rdfs:comment>Module extension (extend ClassMethods).</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#defines_method">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Method"/>
+    <rdfs:comment>A class or module defines a method.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#calls">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Method"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Method"/>
+    <rdfs:comment>Method invocation relationship.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       OBJECT PROPERTIES — RAILS-SPECIFIC
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#routes_to">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Route"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Action"/>
+    <rdfs:comment>Route maps to a controller action.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#serializes">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Serializer"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>Serializer renders a model as JSON.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#validates">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Column"/>
+    <rdfs:comment>Model validates an attribute/column.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_callback">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Callback"/>
+    <rdfs:comment>Model registers a lifecycle callback.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_scope">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Scope"/>
+    <rdfs:comment>Model defines a named scope.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#maps_to_table">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Table"/>
+    <rdfs:comment>Model maps to a database table.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_column">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Table"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Column"/>
+    <rdfs:comment>Table has a column.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_index">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Table"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Index"/>
+    <rdfs:comment>Table has a database index.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#has_foreign_key">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Table"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#ForeignKey"/>
+    <rdfs:comment>Table has a foreign key constraint.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#enqueues">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Job"/>
+    <rdfs:comment>Code enqueues a background job.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#sends_mail_via">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Mailer"/>
+    <rdfs:comment>Code sends email through a mailer.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#broadcasts_to">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Channel"/>
+    <rdfs:comment>Code broadcasts to an ActionCable channel.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#depends_on">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Gem"/>
+    <rdfs:comment>Code depends on a gem.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#exposes_endpoint">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Controller"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Endpoint"/>
+    <rdfs:comment>Controller exposes an API endpoint.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#accepts_parameter">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Endpoint"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Parameter"/>
+    <rdfs:comment>Endpoint accepts a request parameter.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#returns_response">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Endpoint"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Response"/>
+    <rdfs:comment>Endpoint returns a response.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#tests">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#TestCase"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#CodeEntity"/>
+    <rdfs:comment>Test case tests a code entity.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#creates_test_data_for">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Factory"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Model"/>
+    <rdfs:comment>Factory creates test data for a model.</rdfs:comment>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="http://kgrag.ai/ontology/rails#migrates">
+    <rdfs:domain rdf:resource="http://kgrag.ai/ontology/rails#Migration"/>
+    <rdfs:range rdf:resource="http://kgrag.ai/ontology/rails#Table"/>
+    <rdfs:comment>Migration modifies a database table.</rdfs:comment>
+  </owl:ObjectProperty>
+
+</rdf:RDF>

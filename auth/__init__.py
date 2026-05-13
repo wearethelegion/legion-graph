@@ -1,0 +1,1 @@
+"""KGRAG Auth Service package."""

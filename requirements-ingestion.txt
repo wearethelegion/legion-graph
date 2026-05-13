@@ -1,0 +1,20 @@
+# ============================================================
+# kgrag-ingestion extras (installed ON TOP of kgrag-base)
+# Packages used ONLY by the ingestion image services:
+#   entity_extraction_service, summarization_service,
+#   embedding_service, qdrant_storage_service, neo4j_storage_service,
+#   code_preprocessor, document_preprocessor
+# ============================================================
+
+# ── Code parsing / tree-sitter ───────────────────────────────
+gitpython==3.1.46
+tree-sitter-language-pack==0.7.1
+
+# ── LiteLLM with Google provider (preprocessors, embedding) ──
+litellm[google]>=1.40.0
+
+# ── Kafka snappy compression ─────────────────────────────────
+cramjam>=2.8.0
+
+# ── pydantic-settings (preprocessor configs use BaseSettings) 
+pydantic-settings

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kgrag"
+version = "0.1.0"
+description = "Multi-agent memory framework for Claude Code"
+authors = [{name = "Yaroslav", email = "yaroslav@vetlyx.com"}]
+requires-python = ">=3.10"
+dependencies = [
+    "mem0ai>=0.1.0",
+    "qdrant-client>=1.7.0",
+    "neo4j>=5.15.0",
+    "google-generativeai>=0.3.0",
+    "python-dotenv>=1.0.0",
+    "tiktoken>=0.5.0",
+    "pydantic>=2.0.0",
+    "loguru>=0.7.0",
+    "pymongo>=4.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kgrag*", "mcp_servers*", "api*"]
+exclude = ["tests*", "data*", "docker*", "backups*", "sessions*", "docs*", "examples*", "scripts*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

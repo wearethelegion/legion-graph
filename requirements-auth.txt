@@ -1,0 +1,17 @@
+# ============================================================
+# kgrag-auth extras (installed ON TOP of kgrag-base)
+# Packages used ONLY by the auth microservice image.
+# ============================================================
+
+# ── Web framework ─────────────────────────────────────────────
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.9
+
+# ── TOTP 2FA ──────────────────────────────────────────────────
+pyotp>=2.9.0
+qrcode[pil]>=7.4
+
+# ── OAuth2 / email integration ────────────────────────────────
+authlib>=1.3.0
+infobip-api-python-client==6.0.0

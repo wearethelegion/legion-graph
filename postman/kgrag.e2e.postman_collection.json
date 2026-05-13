@@ -1,0 +1,516 @@
+{
+  "info": {
+    "name": "kgrag E2E (Runner)",
+    "description": "End-to-end smoke test: Register → Login → Create company → Create project → Ingest a Markdown doc via Brain → Poll for indexing → Search and verify the doc is retrievable.\n\nHow to run:\n1. Import this collection AND `kgrag.postman_environment.json`.\n2. Select environment `kgrag-local`.\n3. Click 'Run' on this collection in Postman (Collection Runner).\n4. Watch the run report — every step has assertions that PASS/FAIL.\n\nWhat happens per run:\n- User: `e2e+<timestamp>@kgrag.local` (unique per run; no collisions).\n- Company: `E2E Company <timestamp>`.\n- Project: `e2e-project-<timestamp>`.\n- One KNOWLEDGE Brain item is added with distinctive content (a magic phrase + a unique marker).\n- The collection polls `/brain/search` for up to ~3 minutes until the marker appears in results.\n- Final search uses `CHUNKS_LEXICAL` for keyword precision, then `GRAPH_COMPLETION` for LLM-synthesised retrieval.\n\nServers (defaults from kgrag.postman_environment.json):\n- Auth:     http://localhost:8001\n- REST API: http://localhost:8000",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Generate FRESH per-run identifiers on the very first request of each run.",
+          "// 'e2e_phase' is set to the current run timestamp; when the next run starts,",
+          "// the phase value is older than the new Date.now(), so we regenerate everything.",
+          "//",
+          "// This makes the Collection Runner produce a different email/company/project on",
+          "// every run without manual var clearing.",
+          "",
+          "const requestName = (pm.info && pm.info.requestName) || '';",
+          "const isFirstStep = requestName.indexOf('1. Health \\u2014 Auth') !== -1;",
+          "",
+          "if (isFirstStep) {",
+          "    // ── Random pieces ──",
+          "    const ts = Date.now().toString();",
+          "    const shortTs = ts.slice(-8);",
+          "    const rand = () => Math.floor(Math.random() * 36 ** 5).toString(36).padStart(5, '0');",
+          "    const hex  = () => Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, '0');",
+          "    const runId = shortTs + '-' + rand();",
+          "",
+          "    // Random adjective/noun salad for human-readable but unique names.",
+          "    const adjs  = ['amber','silent','crimson','quiet','rapid','jolly','lunar','nimble','wild','azure','bronze','swift','plucky','hidden','feral'];",
+          "    const nouns = ['otter','falcon','rhino','badger','heron','marmot','newt','panther','sparrow','tapir','kestrel','wombat','viper','dingo','manatee'];",
+          "    const adj   = adjs[Math.floor(Math.random() * adjs.length)];",
+          "    const noun  = nouns[Math.floor(Math.random() * nouns.length)];",
+          "",
+          "    const email        = 'e2e+' + runId + '@kgrag-test.io';",
+          "    const username     = 'e2e_' + adj + '_' + noun + '_' + rand();",
+          "    const password     = 'E2E-' + hex() + '-' + hex() + '-Aa1!';   // long, mixed-class",
+          "    const companyName  = (adj.charAt(0).toUpperCase() + adj.slice(1)) + ' ' + (noun.charAt(0).toUpperCase() + noun.slice(1)) + ' Co ' + shortTs;",
+          "    const projectName  = adj + '-' + noun + '-' + rand();",
+          "    const marker       = 'KGRAG_E2E_MARKER_' + runId.toUpperCase().replace(/-/g, '_');",
+          "",
+          "    pm.collectionVariables.set('e2e_run_id',       runId);",
+          "    pm.collectionVariables.set('e2e_email',        email);",
+          "    pm.collectionVariables.set('e2e_username',     username);",
+          "    pm.collectionVariables.set('e2e_password',     password);",
+          "    pm.collectionVariables.set('e2e_company_name', companyName);",
+          "    pm.collectionVariables.set('e2e_project_name', projectName);",
+          "    pm.collectionVariables.set('e2e_marker',       marker);",
+          "",
+          "    // Reset per-run state",
+          "    pm.collectionVariables.set('e2e_poll_attempt',   '0');",
+          "    pm.collectionVariables.set('e2e_poll_succeeded', 'false');",
+          "    pm.collectionVariables.set('e2e_user_id',          '');",
+          "    pm.collectionVariables.set('e2e_company_id',       '');",
+          "    pm.collectionVariables.set('e2e_project_id',       '');",
+          "    pm.collectionVariables.set('e2e_brain_content_id', '');",
+          "    pm.collectionVariables.set('access_token',         '');",
+          "    pm.collectionVariables.set('refresh_token',        '');",
+          "",
+          "    console.log('========== E2E run start ==========');",
+          "    console.log('  run_id:       ', runId);",
+          "    console.log('  email:        ', email);",
+          "    console.log('  username:     ', username);",
+          "    console.log('  password:     ', password);",
+          "    console.log('  company_name: ', companyName);",
+          "    console.log('  project_name: ', projectName);",
+          "    console.log('  marker:       ', marker);",
+          "    console.log('====================================');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health — Auth",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{auth_url}}/health", "host": ["{{auth_url}}"], "path": ["health"] },
+        "description": "Sanity-check the auth service is reachable before any work."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Auth /health returns 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Health — REST API",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{api_url}}/health", "host": ["{{api_url}}"], "path": ["health"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('REST API /health returns 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Register user",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{auth_url}}/register", "host": ["{{auth_url}}"], "path": ["register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{e2e_email}}\",\n  \"username\": \"{{e2e_username}}\",\n  \"password\": \"{{e2e_password}}\",\n  \"roles\": [\"user\"]\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Register returns 201 or 200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+              "const body = pm.response.json();",
+              "// Response shape: when SKIP_EMAIL_VERIFICATION=true, body has id+email+username+is_active+message; otherwise just {user_id, message}.",
+              "const id = body.id || body.user_id;",
+              "pm.test('Response carries a user id (id or user_id)', () => pm.expect(id, 'no id/user_id field').to.be.a('string'));",
+              "if (body.email) pm.test('Email matches what we sent', () => pm.expect(body.email).to.eql(pm.collectionVariables.get('e2e_email')));",
+              "if (body.is_active !== undefined) pm.test('User is auto-activated (SKIP_EMAIL_VERIFICATION on)', () => pm.expect(body.is_active).to.be.true);",
+              "pm.collectionVariables.set('e2e_user_id', id);",
+              "console.log('user_id =', id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Login",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{auth_url}}/login", "host": ["{{auth_url}}"], "path": ["login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{e2e_email}}\",\n  \"password\": \"{{e2e_password}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login returns 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Has access_token', () => pm.expect(body).to.have.property('access_token'));",
+              "pm.expect(body.access_token, 'access_token is non-empty').to.be.a('string').and.to.have.length.greaterThan(20);",
+              "pm.collectionVariables.set('access_token', body.access_token);",
+              "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);",
+              "console.log('access_token stored');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Create company",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{auth_url}}/companies", "host": ["{{auth_url}}"], "path": ["companies"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{e2e_company_name}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Create company returns 201 or 200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+              "const body = pm.response.json();",
+              "pm.test('Response has company id', () => pm.expect(body).to.have.property('id'));",
+              "pm.collectionVariables.set('e2e_company_id', body.id);",
+              "console.log('company_id =', body.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Re-login (refresh JWT to include the new company)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{auth_url}}/login", "host": ["{{auth_url}}"], "path": ["login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{e2e_email}}\",\n  \"password\": \"{{e2e_password}}\"\n}"
+        },
+        "description": "After creating a company, re-issue the JWT so the `companies` claim contains the new id. Required because all downstream gRPC scoping reads `company_id` from the token, not from the request body."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Re-login returns 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('access_token', body.access_token);",
+              "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);",
+              "// Decode JWT to verify the new company_id is in the claims.",
+              "const parts = body.access_token.split('.');",
+              "if (parts.length === 3) {",
+              "    try {",
+              "        const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+              "        const claims = JSON.parse(atob(padded + '==='.slice(0, (4 - padded.length % 4) % 4)));",
+              "        const companies = claims.companies || [];",
+              "        const expected = pm.collectionVariables.get('e2e_company_id');",
+              "        pm.test('JWT includes the new company_id', () => pm.expect(companies).to.include(expected));",
+              "        console.log('JWT companies claim:', companies);",
+              "    } catch (e) { console.warn('Could not decode JWT:', e); }",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Create project",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{api_url}}/api/v1/companies/{{e2e_company_id}}/projects",
+          "host": ["{{api_url}}"],
+          "path": ["api", "v1", "companies", "{{e2e_company_id}}", "projects"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"{{e2e_project_name}}\",\n  \"description\": \"E2E smoke test project\",\n  \"instructions\": {\n    \"description\": \"Used by the Postman E2E runner to verify ingest + search.\",\n    \"languages\": [\"markdown\"],\n    \"frameworks\": [],\n    \"tools\": [\"kgrag\"],\n    \"architecture_notes\": \"Single MD doc, no code ingestion.\",\n    \"conventions\": \"\",\n    \"custom_instructions\": \"Auto-generated; safe to delete.\"\n  }\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Create project returns 201 or 200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+              "const body = pm.response.json();",
+              "pm.test('Response has project id', () => pm.expect(body).to.have.property('id'));",
+              "pm.collectionVariables.set('e2e_project_id', body.id);",
+              "console.log('project_id =', body.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Ingest Markdown document (Brain)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{api_url}}/api/v1/brain", "host": ["{{api_url}}"], "path": ["api", "v1", "brain"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"kind\": \"KNOWLEDGE\",\n  \"title\": \"kgrag E2E test document {{e2e_run_id}}\",\n  \"content\": \"# kgrag E2E Test Document\\n\\nMarker: {{e2e_marker}}\\n\\n## Purpose\\nThis document was created by the kgrag Postman E2E collection. It exists for one reason: to prove that an ingest-then-search round-trip works on a freshly registered user, company, and project.\\n\\n## The platypus is a semi-aquatic mammal\\nThe platypus (Ornithorhynchus anatinus) is a venomous, egg-laying mammal native to eastern Australia. It hunts underwater using electroreception, sensing the electrical fields generated by the muscle contractions of its prey. The marker token above is `{{e2e_marker}}`; the test asserts this token appears in search results.\\n\\n## Why this content is unusual\\n- It mentions an oddly specific animal (the platypus) so the search has high signal.\\n- It embeds a per-run marker token so re-runs don't accidentally match a previous run's data.\\n- It uses markdown headings so the chunker has natural split points.\\n\\n## End\\nIf you can find this document via /api/v1/brain/search by querying for 'platypus' or for the marker, the kgrag ingest-search pipeline is healthy.\",\n  \"metadata\": {\n    \"source\": \"postman-e2e\",\n    \"run_id\": \"{{e2e_run_id}}\",\n    \"marker\": \"{{e2e_marker}}\"\n  }\n}"
+        },
+        "description": "Adds a KNOWLEDGE item containing a unique `e2e_marker` token. Downstream:\n- kgrag-rest-api → kgrag-cognee (BrainContentService.AddToBrain)\n- Postgres write + BrainEvent → Kafka `brain_events`\n- kgrag-document-preprocessor chunks + embeds (Gemini)\n- → `enriched-code-chunks` → entity-extraction + summarisation → embedding → Qdrant `{company_id}_knowledge` + Neo4j `cognee-{company_id}`"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Brain create returns 201 or 200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+              "const body = pm.response.json();",
+              "pm.test('Response has brain content id', () => pm.expect(body).to.have.property('id'));",
+              "pm.collectionVariables.set('e2e_brain_content_id', body.id);",
+              "console.log('brain_content_id =', body.id);",
+              "console.log('Now polling for indexing…');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Wait 15s before first poll",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{auth_url}}/health", "host": ["{{auth_url}}"], "path": ["health"] },
+        "description": "Polite initial wait so the document has a chance to traverse the Kafka pipeline before we start polling."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["setTimeout(() => {}, 15000);"]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Still alive', () => pm.response.to.have.status(200));",
+              "console.log('Initial wait done. Polling next…');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Poll /brain/search until marker found (or give up)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{api_url}}/api/v1/brain/search", "host": ["{{api_url}}"], "path": ["api", "v1", "brain", "search"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"{{e2e_marker}}\",\n  \"search_type\": \"CHUNKS_LEXICAL\",\n  \"limit\": 5,\n  \"depth\": \"concise\"\n}"
+        },
+        "description": "Polls /brain/search using `CHUNKS_LEXICAL` (BM25-style) so the unique marker token matches exactly when present. Postman doesn't have a native loop, so this request inspects the response and reschedules itself by calling `postman.setNextRequest(...)` until the marker is found or the attempt counter exceeds the max."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// On every iteration after the first, wait 10 seconds before firing.",
+              "const attempt = parseInt(pm.collectionVariables.get('e2e_poll_attempt') || '0', 10);",
+              "if (attempt > 0) {",
+              "    const start = Date.now();",
+              "    while (Date.now() - start < 10000) { /* spin 10s */ }",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const MAX_ATTEMPTS = 18; // 18 polls * 10s = ~3 min plus initial 15s wait",
+              "let attempt = parseInt(pm.collectionVariables.get('e2e_poll_attempt') || '0', 10);",
+              "attempt += 1;",
+              "pm.collectionVariables.set('e2e_poll_attempt', attempt.toString());",
+              "",
+              "const marker = pm.collectionVariables.get('e2e_marker');",
+              "const rawText = pm.response.text();",
+              "const found = rawText.indexOf(marker) !== -1;",
+              "",
+              "console.log(`Poll attempt ${attempt}/${MAX_ATTEMPTS}: status=${pm.response.code}, marker_found=${found}`);",
+              "",
+              "if (pm.response.code !== 200) {",
+              "    console.warn('Non-200 response body:', rawText.slice(0, 400));",
+              "}",
+              "",
+              "if (found) {",
+              "    pm.test(`Marker '${marker}' found in /brain/search after ${attempt} attempt(s)`, () => pm.expect(true).to.be.true);",
+              "    pm.collectionVariables.set('e2e_poll_succeeded', 'true');",
+              "    postman.setNextRequest('11. Final search (CHUNKS_LEXICAL)');",
+              "} else if (attempt >= MAX_ATTEMPTS) {",
+              "    pm.test(`Marker found within ${MAX_ATTEMPTS} polls`, () => pm.expect.fail(`Marker '${marker}' not found after ${attempt} polls (~${Math.round(attempt*10/60)}min). Indexing did not complete in time.`));",
+              "    pm.collectionVariables.set('e2e_poll_succeeded', 'false');",
+              "    postman.setNextRequest('11. Final search (CHUNKS_LEXICAL)');",
+              "} else {",
+              "    pm.test(`Polling… attempt ${attempt}/${MAX_ATTEMPTS}, marker not yet visible`, () => pm.expect(found).to.be.false);",
+              "    postman.setNextRequest('10. Poll /brain/search until marker found (or give up)');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Final search (CHUNKS_LEXICAL)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{api_url}}/api/v1/brain/search", "host": ["{{api_url}}"], "path": ["api", "v1", "brain", "search"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"platypus electroreception\",\n  \"search_type\": \"CHUNKS_LEXICAL\",\n  \"limit\": 5,\n  \"depth\": \"thorough\"\n}"
+        },
+        "description": "Search by content keywords (not the marker). Validates that the actual semantic content (platypus, electroreception) of the ingested doc is retrievable."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Final search returns 200', () => pm.response.to.have.status(200));",
+              "const raw = pm.response.text();",
+              "const markerHit = raw.indexOf(pm.collectionVariables.get('e2e_marker')) !== -1;",
+              "const platypusHit = raw.toLowerCase().indexOf('platypus') !== -1;",
+              "pm.test('Result mentions the marker', () => pm.expect(markerHit, 'expected marker to appear in response').to.be.true);",
+              "pm.test('Result mentions \\\"platypus\\\"', () => pm.expect(platypusHit, 'expected the document content keyword to be retrievable').to.be.true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Final search (GRAPH_COMPLETION)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{api_url}}/api/v1/brain/search", "host": ["{{api_url}}"], "path": ["api", "v1", "brain", "search"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"summarise what the test document says about the platypus\",\n  \"search_type\": \"GRAPH_COMPLETION\",\n  \"limit\": 5,\n  \"depth\": \"thorough\"\n}"
+        },
+        "description": "Same data, different retrieval mode. GRAPH_COMPLETION does graph traversal + LLM synthesis. We only assert the call succeeds — the LLM output isn't deterministic enough to assert specific tokens."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('GRAPH_COMPLETION search returns 200', () => pm.response.to.have.status(200));",
+              "const raw = pm.response.text();",
+              "pm.test('Response body is non-empty', () => pm.expect(raw.length).to.be.greaterThan(0));",
+              "// Sanity: response should mention either 'platypus' or the marker, but LLMs are stochastic — not a hard assert.",
+              "const platypusHit = raw.toLowerCase().indexOf('platypus') !== -1;",
+              "if (!platypusHit) console.warn('GRAPH_COMPLETION output did NOT mention platypus — may be normal due to LLM variance, inspect manually.');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. E2E summary",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{auth_url}}/health", "host": ["{{auth_url}}"], "path": ["health"] },
+        "description": "Last step prints a one-line summary of what was created so you can inspect/clean up manually if needed."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const succeeded = pm.collectionVariables.get('e2e_poll_succeeded') === 'true';",
+              "console.log('==========================================');",
+              "console.log('E2E run summary');",
+              "console.log('  run_id:           ', pm.collectionVariables.get('e2e_run_id'));",
+              "console.log('  email:            ', pm.collectionVariables.get('e2e_email'));",
+              "console.log('  user_id:          ', pm.collectionVariables.get('e2e_user_id'));",
+              "console.log('  company_id:       ', pm.collectionVariables.get('e2e_company_id'));",
+              "console.log('  project_id:       ', pm.collectionVariables.get('e2e_project_id'));",
+              "console.log('  brain_content_id: ', pm.collectionVariables.get('e2e_brain_content_id'));",
+              "console.log('  marker:           ', pm.collectionVariables.get('e2e_marker'));",
+              "console.log('  poll_succeeded:   ', succeeded);",
+              "console.log('  poll_attempts:    ', pm.collectionVariables.get('e2e_poll_attempt'));",
+              "console.log('==========================================');",
+              "pm.test('E2E flow completed (ingest + poll + search)', () => pm.expect(succeeded).to.be.true);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "auth_url",              "value": "http://localhost:8001" },
+    { "key": "api_url",               "value": "http://localhost:8000" },
+    { "key": "access_token",          "value": "" },
+    { "key": "refresh_token",         "value": "" },
+    { "key": "e2e_run_id",            "value": "" },
+    { "key": "e2e_email",             "value": "" },
+    { "key": "e2e_username",          "value": "" },
+    { "key": "e2e_password",          "value": "" },
+    { "key": "e2e_company_name",      "value": "" },
+    { "key": "e2e_project_name",      "value": "" },
+    { "key": "e2e_marker",            "value": "" },
+    { "key": "e2e_user_id",           "value": "" },
+    { "key": "e2e_company_id",        "value": "" },
+    { "key": "e2e_project_id",        "value": "" },
+    { "key": "e2e_brain_content_id",  "value": "" },
+    { "key": "e2e_poll_attempt",      "value": "0" },
+    { "key": "e2e_poll_succeeded",    "value": "false" }
+  ]
+}

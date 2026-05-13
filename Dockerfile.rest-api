@@ -1,0 +1,35 @@
+# ============================================================
+# kgrag-rest-api — REST API image
+# Inherits: kgrag-base:latest
+#
+# Serves the main FastAPI application on :8000
+# Handles: company/project/user management, document upload,
+#          ingestion triggers, code search proxying.
+#
+# Build with:
+#   docker build -f Dockerfile.rest-api -t kgrag-rest-api:latest .
+#
+# Requires kgrag-base:latest to be built first.
+# ============================================================
+
+FROM kgrag-base:latest
+
+LABEL description="kgrag REST API (FastAPI app, company/project/document management)"
+
+# ── Install REST API-specific extras ─────────────────────────
+COPY requirements-rest-api.txt .
+RUN pip install --no-cache-dir --use-deprecated=legacy-resolver \
+        -r requirements-rest-api.txt
+
+# ── Copy REST API source ──────────────────────────────────────
+COPY api/ /app/api/
+
+# ── Expose REST API port ──────────────────────────────────────
+EXPOSE 8000
+
+# ── Healthcheck ───────────────────────────────────────────────
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# ── Runtime command ───────────────────────────────────────────
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

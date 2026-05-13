@@ -1,0 +1,12 @@
+# ============================================================
+# kgrag-search extras (installed ON TOP of kgrag-base)
+# Packages used ONLY by the search (gRPC) image.
+# ============================================================
+
+# grpcio-tools: build-time only (proto generation at image build time)
+# Installed explicitly in Dockerfile.search before proto generation,
+# then not needed at runtime.
+# grpcio-tools>=1.60.0,<1.72.0  ← installed directly in Dockerfile.search, not here
+
+# Currently no runtime-only extras for kgrag-search beyond what's in base.
+# Placeholder file kept for future search-specific deps.
