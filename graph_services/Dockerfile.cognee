@@ -1,0 +1,80 @@
+# ============================================================
+# Cognee gRPC Microservice
+# Python 3.13-slim, no version caps, stubs generated at build time.
+# ============================================================
+
+FROM python:3.13-slim
+
+# ── System dependencies ──────────────────────────────────────
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Working directory ────────────────────────────────────────
+WORKDIR /app
+
+# ── Install Python dependencies ──────────────────────────────
+# NOTE: cognee-community-vector-adapter-qdrant is installed FIRST with
+# --no-deps to prevent it from pulling a stale cognee version that
+# conflicts with the pinned version in requirements-cognee.txt.
+COPY requirements-cognee.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir --ignore-requires-python --no-deps cognee-community-vector-adapter-qdrant \
+    && pip install --no-cache-dir -r requirements-cognee.txt
+
+# ── Install build-time tooling + Vertex AI deps ──
+RUN pip install --no-cache-dir grpcio-tools google-cloud-aiplatform
+
+# ── Apply patches to installed Cognee package ─────────────────
+# Gemini json_mode array-wrapping fix: unwrap single-element arrays
+# Embedding concurrency fix: module-level semaphore in index_data_points
+COPY patches/cognee/gemini_adapter.py patches/cognee/index_data_points.py /tmp/cognee_patches/
+RUN COGNEE_SITE=$(python -c "import cognee; import os; print(os.path.dirname(cognee.__file__))") \
+    && cp /tmp/cognee_patches/gemini_adapter.py \
+       "$COGNEE_SITE/infrastructure/llm/structured_output_framework/litellm_instructor/llm/gemini/adapter.py" \
+    && cp /tmp/cognee_patches/index_data_points.py \
+       "$COGNEE_SITE/tasks/storage/index_data_points.py" \
+    && rm -rf /tmp/cognee_patches
+
+# ── Copy source ───────────────────────────────────────────────
+COPY protos/ ./protos/
+COPY cognee_service/ ./cognee_service/
+COPY shared/ ./shared/
+COPY ontologies/ ./ontologies/
+
+# ── Generate gRPC stubs ───────────────────────────────────────
+# Stubs are placed in cognee_service/generated/ and NOT committed to git.
+RUN python -m grpc_tools.protoc \
+        -I./protos \
+        --python_out=./cognee_service/generated \
+        --grpc_python_out=./cognee_service/generated \
+        ./protos/cognee.proto
+
+# Fix relative import in generated grpc file (grpcio-tools emits absolute imports)
+RUN sed -i 's/^import cognee_pb2 as/from cognee_service.generated import cognee_pb2 as/' \
+        ./cognee_service/generated/cognee_pb2_grpc.py
+
+# ── Generate Brain v2 gRPC stubs ─────────────────────────────
+RUN python -m grpc_tools.protoc \
+        -I./protos \
+        --python_out=./cognee_service/generated \
+        --grpc_python_out=./cognee_service/generated \
+        ./protos/brain.proto
+
+# Fix relative import in generated brain grpc file
+RUN sed -i 's/^import brain_pb2 as/from cognee_service.generated import brain_pb2 as/' \
+        ./cognee_service/generated/brain_pb2_grpc.py
+
+# ── Runtime ───────────────────────────────────────────────────
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+EXPOSE 50052
+
+# Health check — verifies the gRPC port is accepting connections
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD python -c "import grpc; ch=grpc.insecure_channel('localhost:50052'); grpc.channel_ready_future(ch).result(timeout=5)" || exit 1
+
+CMD ["python", "-m", "cognee_service.server"]

@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kgrag"
 version = "0.1.0"
-description = "Multi-agent memory framework for Claude Code"
-authors = [{name = "Yaroslav", email = "yaroslav@vetlyx.com"}]
+description = "Knowledge graph RAG"
+authors = [{name = "Yaroslav", email = "yaroslav@icloud.com"}]
 requires-python = ">=3.10"
 dependencies = [
     "mem0ai>=0.1.0",
