@@ -58,7 +58,9 @@ class Neo4jRepository:
         """
         try:
             async with self.driver.session(database="system") as session:
-                await session.run(f"CREATE DATABASE `{self._database}` IF NOT EXISTS WAIT")
+                # No `WAIT` clause — DozerDB rejects it as unsupported, even
+                # though it accepts the rest of the multi-database DDL.
+                await session.run(f"CREATE DATABASE `{self._database}` IF NOT EXISTS")
             logger.info(f"Neo4j database '{self._database}' is ready (created or already existed)")
         except Exception as e:
             # Neo4j Community Edition raises here — multi-database is Enterprise/DozerDB only.
