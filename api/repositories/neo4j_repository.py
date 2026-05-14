@@ -38,6 +38,36 @@ class Neo4jRepository:
                 notifications_min_severity=NotificationMinimumSeverity.OFF,
             )
             logger.info(f"Connected to Neo4j at {self.uri}")
+            await self._ensure_database_exists()
+
+    async def _ensure_database_exists(self) -> None:
+        """
+        Self-heal: create the configured Neo4j database if missing.
+
+        REST API project/company nodes live in the `kgrag` logical database
+        (configured via NEO4J_DATABASE). On a fresh Neo4j volume that database
+        does not exist by default — only `neo4j` and `system` do — so the
+        first `session(database='kgrag')` call raises DatabaseNotFound.
+
+        Runs `CREATE DATABASE <name> IF NOT EXISTS` against the `system`
+        database. Idempotent; no-op when the database already exists.
+        Safe on DozerDB and Neo4j Enterprise (both support multi-database).
+        Logs a warning and continues on Neo4j Community Edition, which does
+        not support multi-database — operators on Community must set
+        NEO4J_DATABASE=neo4j to use the single default database.
+        """
+        try:
+            async with self.driver.session(database="system") as session:
+                await session.run(f"CREATE DATABASE `{self._database}` IF NOT EXISTS WAIT")
+            logger.info(f"Neo4j database '{self._database}' is ready (created or already existed)")
+        except Exception as e:
+            # Neo4j Community Edition raises here — multi-database is Enterprise/DozerDB only.
+            # Don't crash startup; subsequent session() calls will fail with a clearer error
+            # if the database genuinely doesn't exist.
+            logger.warning(
+                f"Could not auto-create Neo4j database '{self._database}' "
+                f"(non-fatal — may be Community Edition without multi-DB support): {e}"
+            )
 
     async def close(self):
         """Close Neo4j connection."""
